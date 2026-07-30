@@ -1,0 +1,84 @@
+# =============================================================================
+# SDLC Brain — Docker Compose
+# Development environment with Frontend, Backend, and PostgreSQL
+# =============================================================================
+
+services:
+  # --- PostgreSQL Database ---
+  db:
+    image: postgres:16-alpine
+    container_name: sdlc-brain-db
+    environment:
+      POSTGRES_DB: sdlcbrain
+      POSTGRES_USER: sdlcbrain
+      POSTGRES_PASSWORD: sdlcbrain
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sdlcbrain"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- pgAdmin ---
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sdlc-brain-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@sdlcbrain.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- FastAPI Backend ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sdlc-brain-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_workspace:/app/workspace
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://sdlcbrain:sdlcbrain@db:5432/sdlcbrain
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_API_BASE=${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
+      - DEBUG=true
+      - CORS_ORIGINS=["http://localhost:3000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Next.js Frontend ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sdlc-brain-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  backend_workspace:

@@ -1,0 +1,30 @@
+"""
+SDLC Brain — Code Review Schemas
+"""
+
+from datetime import datetime
+
+from pydantic import BaseModel
+
+
+class CodeReviewResponse(BaseModel):
+    id: str
+    project_id: str
+    file_path: str
+    original_code: str
+    review_comments: str
+    severity: str
+    suggestions: str
+    score: float
+    status: str
+    version: int
+    confidence: float
+    locked: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class GenerateReviewRequest(BaseModel):
+    project_id: str
