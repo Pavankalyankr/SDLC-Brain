@@ -1,4 +1,9 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+/**
+ * SDLC Brain — DevOps API Hooks
+ */
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 
 export interface PipelineConfig {
@@ -52,7 +57,43 @@ export function useInfra(projectId: string) {
 
 export function useGenerateDevOps(projectId: string) {
   return useMutation({
-    mutationFn: () =>
-      api.post<{ task_id: string; status: string }>("/devops/generate", { project_id: projectId }),
+    mutationFn: (data?: { instructions?: string }) =>
+      api.post<{ task_id: string; status: string }>("/devops/generate", {
+        project_id: projectId,
+        ...data,
+      }),
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to generate DevOps configs");
+    },
+  });
+}
+
+export function useUpdatePipelineStatus(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ pipelineId, status }: { pipelineId: string; status: string }) =>
+      api.patch(`/devops/pipelines/${pipelineId}/status`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: devopsKeys.pipelines(projectId) });
+      toast.success("Pipeline status updated");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to update pipeline status");
+    },
+  });
+}
+
+export function useUpdateInfraStatus(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ infraId, status }: { infraId: string; status: string }) =>
+      api.patch(`/devops/infra/${infraId}/status`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: devopsKeys.infra(projectId) });
+      toast.success("Infrastructure config status updated");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to update infra status");
+    },
   });
 }

@@ -199,3 +199,19 @@ export function useUpdateArtifactStatus() {
     },
   });
 }
+
+export function useUpdateStoryMetadata() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: { priority?: string; story_points?: number; sprint?: string };
+    }) => api.patch(`/agile/stories/${id}/metadata`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agile"] });
+    },
+  });
+}

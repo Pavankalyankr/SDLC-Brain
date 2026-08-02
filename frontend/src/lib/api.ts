@@ -41,6 +41,10 @@ class ApiClient {
       throw new Error(error.message || `API Error: ${response.status}`);
     }
 
+    if (response.status === 204) {
+      return {} as T;
+    }
+
     return response.json();
   }
 
@@ -164,4 +168,47 @@ export const documentApi = {
     return api.upload(`/documents/${projectId}/upload`, formData);
   },
   list: (projectId: string) => api.get(`/documents/${projectId}`),
+  delete: (projectId: string, documentId: string) => api.delete(`/documents/${projectId}/${documentId}`),
+};
+
+export const exportApi = {
+  downloadAgilePdf: async (projectId: string, moduleType: string, format: string = "pdf") => {
+    const url = `${API_BASE}/export/agile/${projectId}/${moduleType}/${format}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${moduleType}.${format}`);
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      if (link.parentElement) {
+        document.body.removeChild(link);
+      }
+    }, 500);
+  },
+  downloadAgileExport: async (projectId: string, moduleType: string, format: string = "pdf") => {
+    return exportApi.downloadAgilePdf(projectId, moduleType, format);
+  },
+  downloadArchitectureExport: async (
+    projectId: string,
+    moduleType: string,
+    format: string,
+    sourceId?: string
+  ) => {
+    let url = `${API_BASE}/export/architecture/${projectId}/${moduleType}/${format}`;
+    if (sourceId) {
+      url += `?source_id=${encodeURIComponent(sourceId)}`;
+    }
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${moduleType}.${format}`);
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      if (link.parentElement) {
+        document.body.removeChild(link);
+      }
+    }, 500);
+  },
 };

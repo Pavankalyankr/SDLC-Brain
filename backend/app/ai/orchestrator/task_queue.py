@@ -61,13 +61,19 @@ class TaskQueue:
         project_id: str,
         worker: Callable[..., Coroutine[Any, Any, Any]],
         *args: Any,
+        task_id: str | None = None,
         **kwargs: Any,
     ) -> AITask:
         """
         Submit a task to the queue. Returns immediately with the task ID.
         The actual work runs in the background.
+
+        Pass `task_id` to use a pre-generated ID (must match what was given to
+        the frontend for SSE subscription). If omitted, a UUID is auto-generated.
         """
         task = AITask(task_type=task_type, project_id=project_id)
+        if task_id:
+            task.id = task_id
         self._tasks[task.id] = task
 
         # Run in background

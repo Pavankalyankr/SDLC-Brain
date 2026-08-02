@@ -42,3 +42,9 @@ class RunbookResponse(BaseModel):
 class AnalyzeIncidentRequest(BaseModel):
     project_id: str
     description: str | None = None
+    instructions: str | None = None
+
+
+class IncidentStatusUpdate(BaseModel):
+    status: str
+    resolution: str | None = None

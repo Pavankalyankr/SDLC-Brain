@@ -18,6 +18,7 @@ from app.modules.agile.schemas import (
     GenerateRequest,
     RequirementResponse,
     StoryResponse,
+    StoryMetadataUpdate,
 )
 from app.modules.agile.service import agile_service
 from app.modules.document.service import document_service
@@ -128,16 +129,17 @@ async def update_feature_status(
 # Stories
 # ═════════════════════════════════════════
 
+@router.get("/stories/{project_id}/approved", response_model=list[StoryResponse])
+async def list_approved_stories(project_id: str, db: AsyncSession = Depends(get_session)):
+    """Get all approved stories (for architecture/development gates)."""
+    return await agile_service.get_approved_stories(db, project_id)
+
+
 @router.get("/stories/{project_id}", response_model=list[StoryResponse])
 async def list_stories(project_id: str, db: AsyncSession = Depends(get_session)):
     """Get all stories for a project."""
     return await agile_service.get_stories(db, project_id)
 
-
-@router.get("/stories/{project_id}/approved", response_model=list[StoryResponse])
-async def list_approved_stories(project_id: str, db: AsyncSession = Depends(get_session)):
-    """Get all approved stories (for architecture/development gates)."""
-    return await agile_service.get_approved_stories(db, project_id)
 
 
 @router.post("/stories/generate")
@@ -154,6 +156,16 @@ async def update_story_status(
 ):
     """Update story status (review/approve)."""
     return await agile_service.update_story_status(db, story_id, data.status, data.feedback)
+
+
+@router.patch("/stories/{story_id}/metadata", response_model=StoryResponse)
+async def update_story_metadata(
+    story_id: str,
+    data: StoryMetadataUpdate,
+    db: AsyncSession = Depends(get_session),
+):
+    """Update story priority, points, and sprint."""
+    return await agile_service.update_story_metadata(db, story_id, data)
 
 
 # ═════════════════════════════════════════

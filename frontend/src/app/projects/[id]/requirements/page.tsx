@@ -81,41 +81,49 @@ export default function RequirementsPage({
     genReqs.isPending || genEpics.isPending || genFeatures.isPending || genStories.isPending || isStreamActive;
 
   const handleGenerate = async () => {
-    let promise;
-    let queryKeyFactory: any;
-    
+    let promise: Promise<unknown> | undefined;
+    let queryKeyFactory: ((pid: string) => readonly unknown[]) | undefined;
+
     switch (activeTab) {
-      case "requirements": 
-        promise = genReqs.mutateAsync({}); 
+      case "requirements":
+        promise = genReqs.mutateAsync({});
         queryKeyFactory = agileKeys.requirements;
         break;
-      case "epics": 
-        promise = genEpics.mutateAsync({}); 
+      case "epics":
+        promise = genEpics.mutateAsync({});
         queryKeyFactory = agileKeys.epics;
         break;
-      case "features": 
-        promise = genFeatures.mutateAsync({}); 
+      case "features":
+        promise = genFeatures.mutateAsync({});
         queryKeyFactory = agileKeys.features;
         break;
-      case "stories": 
-        promise = genStories.mutateAsync({}); 
+      case "stories":
+        promise = genStories.mutateAsync({});
         queryKeyFactory = agileKeys.stories;
         break;
     }
 
-    if (promise) {
-      try {
-        const res = await promise as { task_id?: string };
-        if (res.task_id) {
-          await startStream(res.task_id, "/agile", () => {
-            queryClient.invalidateQueries({ queryKey: queryKeyFactory(projectId) });
-          });
-        }
-      } catch (err) {
-        // Errors handled by mutation hook toasts
+    if (!promise || !queryKeyFactory) return;
+
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory!(projectId) });
+    };
+
+    try {
+      const res = await promise as { task_id?: string };
+      if (res?.task_id) {
+        // Start SSE stream — events may arrive immediately if task already finished
+        await startStream(res.task_id, "/agile", invalidate);
       }
+    } catch {
+      // Errors handled by mutation hook toasts
+    } finally {
+      // ALWAYS refetch after generation attempt — guarantees cards appear
+      // even if SSE stream missed events due to timing
+      invalidate();
     }
   };
+
 
   const handleApproveAll = (type: "requirements" | "epics" | "features" | "stories", items: { id: string; status: string }[]) => {
     const drafts = items.filter((i) => i.status !== "approved");
@@ -162,10 +170,6 @@ export default function RequirementsPage({
           status="draft"
           onGenerate={handleGenerate}
           isGenerating={isGenerating}
-          onChat={() => {}}
-          onEdit={() => {}}
-          onApprove={() => {}}
-          onHistory={() => {}}
           onRegenerate={handleGenerate}
           onExport={(format) => console.log("Export:", format)}
         />
@@ -226,8 +230,8 @@ export default function RequirementsPage({
               title="No requirements generated"
               description="Upload a SOW document and generate requirements to get started."
               actionLabel="Generate Requirements"
-              onAction={() => genReqs.mutate({})}
-              loading={genReqs.isPending}
+              onAction={handleGenerate}
+              loading={isGenerating}
             />
           )}
         </TabsContent>
@@ -255,9 +259,9 @@ export default function RequirementsPage({
                   : "Approve requirements first, then generate epics."
               }
               actionLabel="Generate Epics"
-              onAction={() => genEpics.mutate({})}
+              onAction={handleGenerate}
               disabled={approvedReqs === 0}
-              loading={genEpics.isPending}
+              loading={isGenerating}
             />
           )}
         </TabsContent>
@@ -285,9 +289,9 @@ export default function RequirementsPage({
                   : "Approve epics first, then generate features."
               }
               actionLabel="Generate Features"
-              onAction={() => genFeatures.mutate({})}
+              onAction={handleGenerate}
               disabled={approvedEpics === 0}
-              loading={genFeatures.isPending}
+              loading={isGenerating}
             />
           )}
         </TabsContent>
@@ -315,9 +319,9 @@ export default function RequirementsPage({
                   : "Approve features first, then generate stories."
               }
               actionLabel="Generate Stories"
-              onAction={() => genStories.mutate({})}
+              onAction={handleGenerate}
               disabled={approvedFeatures === 0}
-              loading={genStories.isPending}
+              loading={isGenerating}
             />
           )}
         </TabsContent>

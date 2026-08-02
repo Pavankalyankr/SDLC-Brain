@@ -134,6 +134,9 @@ Switch providers or models via the AI Configuration page in the UI or by editing
 
 ---
 
+# Then run the migration to add missing columns
+docker compose exec backend python migrate.py
+
 ## 📄 License
 
 MIT

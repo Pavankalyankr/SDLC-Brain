@@ -7,6 +7,7 @@
  * and project-scoped sub-navigation.
  */
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppStore } from "@/stores/app-store";
@@ -37,7 +38,7 @@ const mainNav = [
 
 const projectNav = [
   { label: "Overview", href: "", icon: LayoutDashboard },
-  { label: "Requirements", href: "/requirements", icon: ClipboardList },
+  { label: "Agile Assist", href: "/agile", icon: ClipboardList },
   { label: "Architecture", href: "/architecture", icon: Network },
   { label: "Development", href: "/development", icon: Code2 },
   { label: "QA & Testing", href: "/qa", icon: TestTube2 },
@@ -50,6 +51,13 @@ const projectNav = [
 export function Sidebar() {
   const pathname = usePathname();
   const { sidebarCollapsed, toggleSidebar } = useAppStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isCollapsed = mounted && sidebarCollapsed;
 
   // Extract project ID from path: /projects/{id}/...
   const projectMatch = pathname.match(/^\/projects\/([^/]+)/);
@@ -61,7 +69,7 @@ export function Sidebar() {
       className={cn(
         "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-[var(--border)]",
         "bg-[var(--sidebar-bg)] transition-all duration-300 ease-in-out",
-        sidebarCollapsed ? "w-[72px]" : "w-[260px]"
+        isCollapsed ? "w-[72px]" : "w-[260px]"
       )}
     >
       {/* Logo */}
@@ -69,7 +77,7 @@ export function Sidebar() {
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)]">
           <Brain className="h-4 w-4 text-white" />
         </div>
-        {!sidebarCollapsed && (
+        {!isCollapsed && (
           <span className="text-sm font-semibold tracking-tight text-[var(--foreground)] animate-fade-in">
             SDLC Brain
           </span>
@@ -92,7 +100,7 @@ export function Sidebar() {
                 icon={item.icon}
                 label={item.label}
                 isActive={isActive}
-                collapsed={sidebarCollapsed}
+                collapsed={isCollapsed}
               />
             );
           })}
@@ -102,7 +110,7 @@ export function Sidebar() {
         {isProjectPage && (
           <>
             <Separator className="my-4 bg-[var(--border)]" />
-            {!sidebarCollapsed && (
+            {!isCollapsed && (
               <p className="mb-2 px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--foreground-tertiary)]">
                 Project Modules
               </p>
@@ -121,7 +129,7 @@ export function Sidebar() {
                     icon={item.icon}
                     label={item.label}
                     isActive={isActive}
-                    collapsed={sidebarCollapsed}
+                    collapsed={isCollapsed}
                   />
                 );
               })}
@@ -137,7 +145,7 @@ export function Sidebar() {
           icon={Settings}
           label="Settings"
           isActive={pathname.startsWith("/settings")}
-          collapsed={sidebarCollapsed}
+          collapsed={isCollapsed}
         />
 
         {/* Collapse Toggle */}

@@ -30,15 +30,17 @@ export default function QAPage({
   const genQA = useGenerateTestCases(projectId);
 
   const handleGenerate = async () => {
+    const invalidate = () =>
+      queryClient.invalidateQueries({ queryKey: ["test_cases", projectId] });
     try {
-      const res = await genQA.mutateAsync() as { task_id?: string };
+      const res = await genQA.mutateAsync({}) as { task_id?: string };
       if (res.task_id) {
-        await startStream(res.task_id, "/qa", () => {
-          queryClient.invalidateQueries({ queryKey: ["test_cases", projectId] });
-        });
+        await startStream(res.task_id, "/qa", invalidate);
       }
-    } catch (err) {
+    } catch {
       // Error handled by UI toasts
+    } finally {
+      invalidate();
     }
   };
 
@@ -60,12 +62,7 @@ export default function QAPage({
           status="draft"
           onGenerate={handleGenerate}
           isGenerating={isGenerating}
-          onChat={() => {}}
-          onEdit={() => {}}
-          onApprove={() => {}}
-          onHistory={() => {}}
           onRegenerate={handleGenerate}
-          onExport={() => {}}
         />
       </div>
 

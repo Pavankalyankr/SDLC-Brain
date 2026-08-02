@@ -1,4 +1,9 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+/**
+ * SDLC Brain — Development API Hooks
+ */
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 
 export interface CodeFile {
@@ -15,11 +20,18 @@ export interface CodeFile {
   confidence: number;
   locked: boolean;
   feedback: string | null;
+  approved_at: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+export interface GenerateCodeRequest {
+  project_id: string;
+  instructions?: string;
 }
 
 export const devKeys = {
-  files: (pid: string) => ["dev", "files", pid] as const,
+  files: (pid: string) => ["development", "files", pid] as const,
 };
 
 export function useCodeFiles(projectId: string) {
@@ -30,9 +42,30 @@ export function useCodeFiles(projectId: string) {
   });
 }
 
-export function useGenerateCodeFiles(projectId: string) {
+export function useGenerateCode(projectId: string) {
   return useMutation({
-    mutationFn: (instructions?: string) =>
-      api.post<{ task_id: string; status: string }>("/development/generate", { project_id: projectId, instructions }),
+    mutationFn: (data?: { instructions?: string }) =>
+      api.post<{ task_id: string; status: string }>("/development/generate", {
+        project_id: projectId,
+        ...data,
+      }),
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to generate code");
+    },
+  });
+}
+
+export function useUpdateCodeFileStatus(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fileId, status }: { fileId: string; status: string }) =>
+      api.patch(`/development/files/${fileId}/status`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: devKeys.files(projectId) });
+      toast.success("Code file status updated");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to update status");
+    },
   });
 }

@@ -51,7 +51,7 @@ class AgileService:
                 instructions=instructions,
             )
 
-        await task_queue.submit("agile", project_id, _worker)
+        await task_queue.submit("agile", project_id, _worker, task_id=task_id)
         return {"task_id": task_id, "status": "generating", "type": "requirements"}
 
     async def update_requirement_status(
@@ -90,7 +90,7 @@ class AgileService:
                 task_id=tid, db=db, project_id=project_id, instructions=instructions
             )
 
-        await task_queue.submit("agile", project_id, _worker)
+        await task_queue.submit("agile", project_id, _worker, task_id=task_id)
         return {"task_id": task_id, "status": "generating", "type": "epics"}
 
     async def update_epic_status(
@@ -131,7 +131,7 @@ class AgileService:
                 task_id=tid, db=db, project_id=project_id, instructions=instructions
             )
 
-        await task_queue.submit("agile", project_id, _worker)
+        await task_queue.submit("agile", project_id, _worker, task_id=task_id)
         return {"task_id": task_id, "status": "generating", "type": "features"}
 
     async def update_feature_status(
@@ -175,7 +175,7 @@ class AgileService:
                 task_id=tid, db=db, project_id=project_id, instructions=instructions
             )
 
-        await task_queue.submit("agile", project_id, _worker)
+        await task_queue.submit("agile", project_id, _worker, task_id=task_id)
         return {"task_id": task_id, "status": "generating", "type": "stories"}
 
     async def update_story_status(
@@ -193,6 +193,24 @@ class AgileService:
         if status == "approved":
             story.locked = True
             story.approved_at = datetime.now(UTC)
+
+        await db.flush()
+        await db.refresh(story)
+        return story
+
+    async def update_story_metadata(
+        self, db: AsyncSession, story_id: str, data: any
+    ) -> Story:
+        story = await agile_repository.get_story(db, story_id)
+        if not story:
+            raise NotFoundException("Story not found")
+            
+        if data.priority is not None:
+            story.priority = data.priority
+        if data.story_points is not None:
+            story.story_points = data.story_points
+        if data.sprint is not None:
+            story.sprint = data.sprint
 
         await db.flush()
         await db.refresh(story)

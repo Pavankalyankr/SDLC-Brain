@@ -4,6 +4,7 @@ SDLC Brain — FastAPI Application Entry Point
 Configures middleware, CORS, routes, and lifecycle events.
 """
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -15,16 +16,33 @@ from app.core.config import settings
 from app.core.database import close_db, init_db
 from app.core.exceptions import register_exception_handlers
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifecycle: startup and shutdown."""
-    # Startup
-    if settings.DEBUG:
-        await init_db()
+    # ── Startup ──────────────────────────────────────────────
+    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+
+    # Always create/verify DB tables on startup.
+    # Alembic is preferred in production but this ensures tables exist on first run.
+    await init_db()
+    logger.info("Database tables verified/created")
+
+    # Pre-initialize the AI orchestrator so the first request isn't slow.
+    try:
+        from app.ai.orchestrator.orchestrator import orchestrator
+        orchestrator.initialize()
+        logger.info("AI Orchestrator initialized")
+    except Exception as e:
+        logger.warning(f"AI Orchestrator init failed (non-fatal): {e}")
+
     yield
-    # Shutdown
+
+    # ── Shutdown ─────────────────────────────────────────────
     await close_db()
+    logger.info("Database connections closed")
 
 
 def create_app() -> FastAPI:
@@ -33,13 +51,13 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description="AI-Powered Software Development Lifecycle Assistant",
-        docs_url="/api/docs" if settings.DEBUG else None,
-        redoc_url="/api/redoc" if settings.DEBUG else None,
-        openapi_url="/api/openapi.json" if settings.DEBUG else None,
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
         lifespan=lifespan,
     )
 
-    # CORS
+    # ── CORS ─────────────────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
@@ -48,13 +66,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Exception handlers
+    # ── Exception Handlers ────────────────────────────────────
     register_exception_handlers(app)
 
-    # API routes
+    # ── API Routes ────────────────────────────────────────────
     app.include_router(api_v1_router, prefix="/api/v1")
 
-    # Health check
+    # ── Health Check ─────────────────────────────────────────
     @app.get("/health", tags=["System"])
     async def health_check():
         return {

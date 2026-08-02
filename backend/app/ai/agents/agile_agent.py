@@ -68,6 +68,7 @@ class AgileAgent:
             created = await agile_repository.create_requirement(db, req)
             requirements.append(created)
 
+        await db.commit()
         await event_manager.publish_complete(task_id, {
             "type": "requirements",
             "count": len(requirements),
@@ -123,6 +124,7 @@ class AgileAgent:
             created = await agile_repository.create_epic(db, epic)
             epics.append(created)
 
+        await db.commit()
         await event_manager.publish_complete(task_id, {
             "type": "epics",
             "count": len(epics),
@@ -177,6 +179,7 @@ class AgileAgent:
             created = await agile_repository.create_feature(db, feature)
             features.append(created)
 
+        await db.commit()
         await event_manager.publish_complete(task_id, {
             "type": "features",
             "count": len(features),
@@ -235,6 +238,7 @@ class AgileAgent:
             created = await agile_repository.create_story(db, story)
             stories.append(created)
 
+        await db.commit()
         await event_manager.publish_complete(task_id, {
             "type": "stories",
             "count": len(stories),

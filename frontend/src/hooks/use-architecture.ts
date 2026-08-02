@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 export interface SystemDesign {
   id: string;
   project_id: string;
+  source_type: string | null;
+  source_id: string | null;
   title: string;
   description: string;
   architecture_type: string;
@@ -25,6 +27,8 @@ export interface SystemDesign {
 export interface APIContract {
   id: string;
   project_id: string;
+  source_type: string | null;
+  source_id: string | null;
   method: string;
   path: string;
   summary: string;
@@ -41,6 +45,8 @@ export interface APIContract {
 export interface DBSchemaItem {
   id: string;
   project_id: string;
+  source_type: string | null;
+  source_id: string | null;
   table_name: string;
   description: string;
   columns: string;
@@ -49,6 +55,12 @@ export interface DBSchemaItem {
   status: string;
   confidence: number;
   created_at: string;
+}
+
+export interface GenerateArchOptions {
+  instructions?: string;
+  source_type?: string;
+  source_id?: string;
 }
 
 export const archKeys = {
@@ -83,21 +95,21 @@ export function useDBSchemas(projectId: string) {
 
 export function useGenerateDesign(projectId: string) {
   return useMutation({
-    mutationFn: (instructions?: string) =>
-      api.post<{ task_id: string; status: string }>("/architecture/designs/generate", { project_id: projectId, instructions }),
+    mutationFn: (options?: GenerateArchOptions) =>
+      api.post<{ task_id: string; status: string }>("/architecture/designs/generate", { project_id: projectId, ...options }),
   });
 }
 
 export function useGenerateAPIs(projectId: string) {
   return useMutation({
-    mutationFn: (instructions?: string) =>
-      api.post<{ task_id: string; status: string }>("/architecture/apis/generate", { project_id: projectId, instructions }),
+    mutationFn: (options?: GenerateArchOptions) =>
+      api.post<{ task_id: string; status: string }>("/architecture/apis/generate", { project_id: projectId, ...options }),
   });
 }
 
 export function useGenerateDBSchemas(projectId: string) {
   return useMutation({
-    mutationFn: (instructions?: string) =>
-      api.post<{ task_id: string; status: string }>("/architecture/schemas/generate", { project_id: projectId, instructions }),
+    mutationFn: (options?: GenerateArchOptions) =>
+      api.post<{ task_id: string; status: string }>("/architecture/schemas/generate", { project_id: projectId, ...options }),
   });
 }

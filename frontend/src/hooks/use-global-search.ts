@@ -5,45 +5,37 @@ export interface SearchResult {
   id: string;
   title: string;
   type: string;
-  project_id: string;
+  project_id?: string;
   project_name?: string;
   snippet?: string;
+  description?: string;
+  url?: string;
 }
 
-export function useGlobalSearch(query: string) {
+interface SearchResponse {
+  query: string;
+  results: SearchResult[];
+}
+
+export function useGlobalSearch(query: string, projectId?: string) {
   return useQuery({
-    queryKey: ["search", query],
+    queryKey: ["search", query, projectId],
     queryFn: async () => {
-      if (!query) return [];
-      
-      // Mock search results for MVP
-      return [
-        {
-          id: "1",
-          title: "User Authentication API",
-          type: "architecture",
-          project_id: "demo",
-          project_name: "E-Commerce Platform",
-          snippet: "POST /api/auth/login",
-        },
-        {
-          id: "2",
-          title: "Setup Payment Gateway",
-          type: "story",
-          project_id: "demo",
-          project_name: "E-Commerce Platform",
-          snippet: "As a user, I want to securely checkout...",
-        },
-        {
-          id: "3",
-          title: "Incident: Payment Gateway Timeout",
-          type: "production",
-          project_id: "demo",
-          project_name: "E-Commerce Platform",
-          snippet: "Stripe API taking > 5s to respond.",
-        },
-      ] as SearchResult[];
+      if (!query || query.length < 2) return [];
+      const params = new URLSearchParams({ q: query });
+      if (projectId) params.set("project_id", projectId);
+      const data = await api.get<SearchResponse>(`/search?${params.toString()}`);
+      // Map backend response to our SearchResult shape
+      return (data.results || []).map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        type: (r.type || "document").toLowerCase(),
+        project_id: r.project_id || projectId || "",
+        snippet: r.description || r.snippet || "",
+        url: r.url,
+      })) as SearchResult[];
     },
-    enabled: query.length > 2,
+    enabled: query.length >= 2,
+    retry: false,
   });
 }

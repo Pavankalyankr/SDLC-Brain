@@ -29,15 +29,17 @@ export default function ProductionPage({
   const analyzeProd = useAnalyzeIncident(projectId);
 
   const handleGenerate = async () => {
+    const invalidate = () =>
+      queryClient.invalidateQueries({ queryKey: prodKeys.incidents(projectId) });
     try {
-      const res = await analyzeProd.mutateAsync(undefined) as { task_id?: string };
+      const res = await analyzeProd.mutateAsync({}) as { task_id?: string };
       if (res.task_id) {
-        await startStream(res.task_id, "/production", () => {
-          queryClient.invalidateQueries({ queryKey: prodKeys.incidents(projectId) });
-        });
+        await startStream(res.task_id, "/production", invalidate);
       }
-    } catch (err) {
+    } catch {
       // Error handled by UI toasts
+    } finally {
+      invalidate();
     }
   };
 
@@ -59,12 +61,7 @@ export default function ProductionPage({
           status="draft"
           onGenerate={handleGenerate}
           isGenerating={isGenerating}
-          onChat={() => {}}
-          onEdit={() => {}}
-          onApprove={() => {}}
-          onHistory={() => {}}
           onRegenerate={handleGenerate}
-          onExport={() => {}}
         />
       </div>
 

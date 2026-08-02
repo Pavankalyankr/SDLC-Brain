@@ -22,6 +22,7 @@ class TestCaseResponse(BaseModel):
     version: int
     confidence: float
     locked: bool
+    approved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -49,3 +50,8 @@ class TestPlanResponse(BaseModel):
 class GenerateQARequest(BaseModel):
     project_id: str
     instructions: str | None = None
+
+
+class TestCaseStatusUpdate(BaseModel):
+    status: str
+    feedback: str | None = None

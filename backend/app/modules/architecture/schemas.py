@@ -12,6 +12,8 @@ from pydantic import BaseModel
 class SystemDesignResponse(BaseModel):
     id: str
     project_id: str
+    source_type: str | None = None
+    source_id: str | None = None
     title: str
     description: str
     architecture_type: str
@@ -34,6 +36,8 @@ class APIContractResponse(BaseModel):
     id: str
     project_id: str
     system_design_id: str | None
+    source_type: str | None = None
+    source_id: str | None = None
     method: str
     path: str
     summary: str
@@ -56,6 +60,8 @@ class DBSchemaResponse(BaseModel):
     id: str
     project_id: str
     system_design_id: str | None
+    source_type: str | None = None
+    source_id: str | None = None
     table_name: str
     description: str
     columns: str  # JSON string
@@ -75,3 +81,10 @@ class DBSchemaResponse(BaseModel):
 class GenerateArchitectureRequest(BaseModel):
     project_id: str
     instructions: str | None = None
+    source_type: str | None = None
+    source_id: str | None = None
+
+
+class ArchitectureStatusUpdate(BaseModel):
+    status: str
+    feedback: str | None = None

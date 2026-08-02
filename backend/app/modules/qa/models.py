@@ -30,8 +30,10 @@ class TestCase(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 
 
 class TestPlan(Base):

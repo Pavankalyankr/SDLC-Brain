@@ -34,14 +34,20 @@ class ProjectRepository:
         """Create a new project."""
         db.add(project)
         await db.flush()
-        await db.refresh(project)
-        return project
+        # Fetch it back with eager loading to satisfy Pydantic schemas
+        created_project = await self.get_by_id(db, project.id)
+        if not created_project:
+            raise ValueError("Failed to retrieve created project")
+        return created_project
 
     async def update(self, db: AsyncSession, project: Project) -> Project:
         """Update a project."""
         await db.flush()
-        await db.refresh(project)
-        return project
+        # Fetch it back with eager loading to satisfy Pydantic schemas
+        updated_project = await self.get_by_id(db, project.id)
+        if not updated_project:
+            raise ValueError("Failed to retrieve updated project")
+        return updated_project
 
     async def delete(self, db: AsyncSession, project: Project) -> None:
         """Delete a project."""

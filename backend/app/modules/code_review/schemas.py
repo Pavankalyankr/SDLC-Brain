@@ -20,6 +20,7 @@ class CodeReviewResponse(BaseModel):
     version: int
     confidence: float
     locked: bool
+    approved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -28,3 +29,9 @@ class CodeReviewResponse(BaseModel):
 
 class GenerateReviewRequest(BaseModel):
     project_id: str
+    instructions: str | None = None
+
+
+class ReviewStatusUpdate(BaseModel):
+    status: str
+    feedback: str | None = None

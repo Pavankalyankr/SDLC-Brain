@@ -52,11 +52,16 @@ class Settings(BaseSettings):
         """Synchronous database URL for Alembic migrations."""
         return self.DATABASE_URL.replace("+asyncpg", "")
 
-    # --- AI Configuration ---
+    # --- AI Configuration — Gemini (default) ---
+    GEMINI_API_KEY: str = ""
+
+    # --- AI Configuration — NVIDIA NIM (optional future provider) ---
     NVIDIA_NIM_API_KEY: str = ""
     NVIDIA_NIM_API_BASE: str = "https://integrate.api.nvidia.com/v1/"
-    DEFAULT_REASONING_MODEL: str = "nvidia_nim/deepseek-ai/deepseek-r1"
-    DEFAULT_CODING_MODEL: str = "nvidia_nim/qwen/qwen3-coder"
+
+    # Default models (used as fallback if ai_config.yaml missing)
+    DEFAULT_REASONING_MODEL: str = "gemini-flash-latest"
+    DEFAULT_CODING_MODEL: str = "gemini-flash-latest"
     AI_CONFIG_PATH: str = "ai_config.yaml"
 
     # --- Workspace ---

@@ -30,15 +30,17 @@ export default function CodeReviewPage({
   const genReview = useGenerateCodeReview(projectId);
 
   const handleGenerate = async () => {
+    const invalidate = () =>
+      queryClient.invalidateQueries({ queryKey: reviewKeys.reviews(projectId) });
     try {
-      const res = await genReview.mutateAsync() as { task_id?: string };
+      const res = await genReview.mutateAsync({}) as { task_id?: string };
       if (res.task_id) {
-        await startStream(res.task_id, "/code-review", () => {
-          queryClient.invalidateQueries({ queryKey: reviewKeys.reviews(projectId) });
-        });
+        await startStream(res.task_id, "/code-review", invalidate);
       }
-    } catch (err) {
+    } catch {
       // Error handled by UI toasts
+    } finally {
+      invalidate();
     }
   };
 
@@ -60,12 +62,7 @@ export default function CodeReviewPage({
           status="draft"
           onGenerate={handleGenerate}
           isGenerating={isGenerating}
-          onChat={() => {}}
-          onEdit={() => {}}
-          onApprove={() => {}}
-          onHistory={() => {}}
           onRegenerate={handleGenerate}
-          onExport={() => {}}
         />
       </div>
 

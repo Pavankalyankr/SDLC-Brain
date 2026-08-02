@@ -18,7 +18,7 @@ import { ConfidenceBadge } from "@/components/shared/confidence-badge";
 import { AIThinking } from "@/components/shared/ai-thinking";
 import { cn } from "@/lib/utils";
 import { useAIGeneration } from "@/hooks/use-ai-generation";
-import { useCodeFiles, useGenerateCodeFiles, devKeys } from "@/hooks/use-development";
+import { useCodeFiles, useGenerateCode, devKeys } from "@/hooks/use-development";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function DevelopmentPage({
@@ -32,18 +32,20 @@ export default function DevelopmentPage({
   const { startStream, isGenerating } = useAIGeneration();
   
   const { data: files = [] } = useCodeFiles(projectId);
-  const genCode = useGenerateCodeFiles(projectId);
+  const genCode = useGenerateCode(projectId);
 
   const handleGenerate = async () => {
+    const invalidate = () =>
+      queryClient.invalidateQueries({ queryKey: devKeys.files(projectId) });
     try {
-      const res = await genCode.mutateAsync(undefined) as { task_id?: string };
+      const res = await genCode.mutateAsync({}) as { task_id?: string };
       if (res.task_id) {
-        await startStream(res.task_id, "/development", () => {
-          queryClient.invalidateQueries({ queryKey: devKeys.files(projectId) });
-        });
+        await startStream(res.task_id, "/development", invalidate);
       }
-    } catch (err) {
+    } catch {
       // Error handled by UI toasts
+    } finally {
+      invalidate();
     }
   };
 
@@ -65,12 +67,7 @@ export default function DevelopmentPage({
           status="draft"
           onGenerate={handleGenerate}
           isGenerating={isGenerating}
-          onChat={() => {}}
-          onEdit={() => {}}
-          onApprove={() => {}}
-          onHistory={() => {}}
           onRegenerate={handleGenerate}
-          onExport={() => {}}
         />
       </div>
 

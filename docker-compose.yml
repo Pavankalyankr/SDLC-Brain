@@ -49,10 +49,10 @@ services:
     volumes:
       - ./backend:/app
       - backend_workspace:/app/workspace
+    env_file:
+      - ./backend/.env
     environment:
       - DATABASE_URL=postgresql+asyncpg://sdlcbrain:sdlcbrain@db:5432/sdlcbrain
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - OPENROUTER_API_BASE=${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
       - DEBUG=true
       - CORS_ORIGINS=["http://localhost:3000"]
     depends_on:

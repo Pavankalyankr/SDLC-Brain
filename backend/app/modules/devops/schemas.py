@@ -43,3 +43,8 @@ class InfraConfigResponse(BaseModel):
 
 class GenerateDevOpsRequest(BaseModel):
     project_id: str
+    instructions: str | None = None
+
+
+class DevOpsStatusUpdate(BaseModel):
+    status: str

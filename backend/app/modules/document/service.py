@@ -95,5 +95,18 @@ class DocumentService:
         texts = [doc.extracted_text for doc in docs if doc.extracted_text]
         return "\n\n---\n\n".join(texts)
 
+    async def delete_document(self, db: AsyncSession, document_id: str) -> None:
+        """Delete a document and its file."""
+        doc = await self.get_document(db, document_id)
+        
+        # Delete file from disk
+        if doc.file_path:
+            file_path = Path(doc.file_path)
+            if file_path.exists():
+                file_path.unlink()
+                
+        # Delete record from DB
+        await db.delete(doc)
+        await db.flush()
 
 document_service = DocumentService()

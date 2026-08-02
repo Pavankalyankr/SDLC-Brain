@@ -23,23 +23,52 @@ logger = logging.getLogger(__name__)
 class ArchitectureAgent:
     """Architecture generation agent."""
 
-    async def generate_system_design(
-        self, task_id: str, db: AsyncSession, project_id: str, instructions: str = ""
-    ) -> SystemDesign | None:
-        """Generate system design from approved stories."""
-        await event_manager.publish_thinking(task_id, "Analyzing approved stories for architecture...")
+    async def _get_source_context(
+        self, db: AsyncSession, project_id: str, source_type: str | None, source_id: str | None
+    ) -> tuple[str, bool]:
+        """Fetch targeted agile item text if source is selected, otherwise fallback to stories."""
+        if source_type and source_id:
+            if source_type == "requirements":
+                item = await agile_repository.get_requirement(db, source_id)
+                if item:
+                    return f"Selected Requirement [{item.id}] **{item.title}** ({item.priority}): {item.description}", True
+            elif source_type == "epics":
+                item = await agile_repository.get_epic(db, source_id)
+                if item:
+                    return f"Selected Epic [{item.id}] **{item.title}**: {item.description}", True
+            elif source_type == "features":
+                item = await agile_repository.get_feature(db, source_id)
+                if item:
+                    return f"Selected Feature [{item.id}] **{item.title}** ({item.priority}): {item.description}", True
+            elif source_type == "stories":
+                item = await agile_repository.get_story(db, source_id)
+                if item:
+                    return f"Selected Story [{item.id}] **{item.title}** ({item.priority}): {item.description}\nAcceptance: {item.acceptance_criteria}", True
+            return "Item not found", False
 
+        # Default fallback to approved stories
         stories = await agile_repository.get_approved_stories(db, project_id)
         if not stories:
-            await event_manager.publish_error(task_id, "No approved stories found. Complete the Agile flow first.")
-            return None
-
-        stories_text = "\n".join(
+            return "", False
+        text = "\n".join(
             f"[{s.id}] **{s.title}** ({s.priority}): {s.description}\nAcceptance: {s.acceptance_criteria}"
             for s in stories
         )
+        return text, True
 
-        system_prompt, messages = architecture_prompts.system_design_prompt(stories_text, instructions)
+    async def generate_system_design(
+        self, task_id: str, db: AsyncSession, project_id: str, instructions: str = "",
+        source_type: str | None = None, source_id: str | None = None
+    ) -> SystemDesign | None:
+        """Generate system design from approved stories or selected item."""
+        await event_manager.publish_thinking(task_id, "Analyzing agile specifications for architecture design...")
+
+        context_text, ok = await self._get_source_context(db, project_id, source_type, source_id)
+        if not ok:
+            await event_manager.publish_error(task_id, "No valid source item or approved stories found. Please select an agile artifact.")
+            return None
+
+        system_prompt, messages = architecture_prompts.system_design_prompt(context_text, instructions)
 
         result = await orchestrator.generate(
             task_type="architecture", messages=messages,
@@ -53,6 +82,8 @@ class ArchitectureAgent:
 
         design = SystemDesign(
             project_id=project_id,
+            source_type=source_type,
+            source_id=source_id,
             title=parsed.get("title", "System Architecture"),
             description=parsed.get("description", ""),
             architecture_type=parsed.get("architecture_type", "microservices"),
@@ -63,28 +94,34 @@ class ArchitectureAgent:
         )
         created = await architecture_repository.create_design(db, design)
 
+        await db.commit()
         await event_manager.publish_complete(task_id, {"type": "system_design", "id": created.id})
-        logger.info(f"Generated system design for project {project_id}")
+        logger.info(f"Generated system design for project {project_id} (source: {source_type}/{source_id})")
         return created
 
     async def generate_api_contracts(
-        self, task_id: str, db: AsyncSession, project_id: str, instructions: str = ""
+        self, task_id: str, db: AsyncSession, project_id: str, instructions: str = "",
+        source_type: str | None = None, source_id: str | None = None
     ) -> list[APIContract]:
-        """Generate API contracts from system design + stories."""
+        """Generate API contracts from system design + source item."""
         await event_manager.publish_thinking(task_id, "Generating API contracts...")
 
         designs = await architecture_repository.get_designs(db, project_id)
-        approved_designs = [d for d in designs if d.status == "approved"]
-        if not approved_designs:
-            await event_manager.publish_error(task_id, "No approved system design found.")
+        if source_id:
+            scoped_designs = [d for d in designs if d.source_id == source_id]
+            design = scoped_designs[-1] if scoped_designs else (designs[-1] if designs else None)
+        else:
+            approved_designs = [d for d in designs if d.status == "approved"]
+            design = approved_designs[-1] if approved_designs else (designs[-1] if designs else None)
+
+        if not design:
+            await event_manager.publish_error(task_id, "No reference system design found. Generate a system design first.")
             return []
 
-        design = approved_designs[-1]
-        stories = await agile_repository.get_approved_stories(db, project_id)
-        stories_text = "\n".join(f"**{s.title}**: {s.description}" for s in stories)
+        context_text, _ = await self._get_source_context(db, project_id, source_type, source_id)
 
         system_prompt, messages = architecture_prompts.api_contracts_prompt(
-            design.description, stories_text, instructions
+            design.description, context_text, instructions
         )
 
         result = await orchestrator.generate(
@@ -99,6 +136,8 @@ class ArchitectureAgent:
             contract = APIContract(
                 project_id=project_id,
                 system_design_id=design.id,
+                source_type=source_type,
+                source_id=source_id,
                 method=item.get("method", "GET"),
                 path=item.get("path", "/"),
                 summary=item.get("summary", ""),
@@ -112,27 +151,41 @@ class ArchitectureAgent:
             created = await architecture_repository.create_api_contract(db, contract)
             contracts.append(created)
 
+        await db.commit()
         await event_manager.publish_complete(task_id, {"type": "api_contracts", "count": len(contracts)})
         return contracts
 
     async def generate_db_schemas(
-        self, task_id: str, db: AsyncSession, project_id: str, instructions: str = ""
+        self, task_id: str, db: AsyncSession, project_id: str, instructions: str = "",
+        source_type: str | None = None, source_id: str | None = None
     ) -> list[DBSchema]:
-        """Generate DB schemas from system design + API contracts."""
+        """Generate DB schemas from system design + API contracts + source item."""
         await event_manager.publish_thinking(task_id, "Generating database schema...")
 
         designs = await architecture_repository.get_designs(db, project_id)
-        approved_designs = [d for d in designs if d.status == "approved"]
-        if not approved_designs:
-            await event_manager.publish_error(task_id, "No approved system design found.")
+        if source_id:
+            scoped_designs = [d for d in designs if d.source_id == source_id]
+            design = scoped_designs[-1] if scoped_designs else (designs[-1] if designs else None)
+        else:
+            approved_designs = [d for d in designs if d.status == "approved"]
+            design = approved_designs[-1] if approved_designs else (designs[-1] if designs else None)
+
+        if not design:
+            await event_manager.publish_error(task_id, "No reference system design found. Generate a system design first.")
             return []
 
-        design = approved_designs[-1]
         contracts = await architecture_repository.get_api_contracts(db, project_id)
-        api_text = "\n".join(f"{c.method} {c.path}: {c.summary}" for c in contracts)
+        if source_id:
+            scoped_contracts = [c for c in contracts if c.source_id == source_id]
+            target_contracts = scoped_contracts if scoped_contracts else contracts
+        else:
+            target_contracts = contracts
+
+        api_text = "\n".join(f"{c.method} {c.path}: {c.summary}" for c in target_contracts)
+        context_text, _ = await self._get_source_context(db, project_id, source_type, source_id)
 
         system_prompt, messages = architecture_prompts.db_schema_prompt(
-            design.description, api_text, instructions
+            design.description, api_text, instructions, context_text
         )
 
         result = await orchestrator.generate(
@@ -147,6 +200,8 @@ class ArchitectureAgent:
             schema = DBSchema(
                 project_id=project_id,
                 system_design_id=design.id,
+                source_type=source_type,
+                source_id=source_id,
                 table_name=item.get("table_name", "unknown"),
                 description=item.get("description", ""),
                 columns=json.dumps(item.get("columns", [])),
@@ -158,6 +213,7 @@ class ArchitectureAgent:
             created = await architecture_repository.create_db_schema(db, schema)
             schemas.append(created)
 
+        await db.commit()
         await event_manager.publish_complete(task_id, {"type": "db_schemas", "count": len(schemas)})
         return schemas
 

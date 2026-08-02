@@ -34,7 +34,10 @@ class ProjectService:
 
     async def create_project(self, db: AsyncSession, data: ProjectCreate) -> Project:
         """Create a new project with its workspace directory."""
+        import uuid
+        
         project = Project(
+            id=str(uuid.uuid4()),
             name=data.name,
             description=data.description,
         )

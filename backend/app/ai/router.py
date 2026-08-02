@@ -30,42 +30,34 @@ class AIRouter:
             with open(self._config_path) as f:
                 self._config = yaml.safe_load(f) or {}
         else:
-            # Fallback defaults
+            # Fallback defaults — mirrors ai_config.yaml
             self._config = {
                 "providers": {
-                    "nvidia_nim": {
-                        "name": "NVIDIA NIM",
-                        "api_base": settings.NVIDIA_NIM_API_BASE,
-                        "api_key": settings.NVIDIA_NIM_API_KEY,
+                    "gemini": {
+                        "name": "Gemini",
+                        "api_key": settings.GEMINI_API_KEY,
                         "enabled": True,
                     }
                 },
                 "models": {
-                    "deepseek-r1": {
-                        "provider": "nvidia_nim",
-                        "model_id": settings.DEFAULT_REASONING_MODEL,
+                    "gemini-flash-latest": {
+                        "provider": "gemini",
+                        "model_id": "gemini-flash-latest",
                         "max_tokens": 8192,
                         "temperature": 0.7,
-                        "category": "reasoning",
-                    },
-                    "qwen3-coder": {
-                        "provider": "nvidia_nim",
-                        "model_id": settings.DEFAULT_CODING_MODEL,
-                        "max_tokens": 8192,
-                        "temperature": 0.3,
-                        "category": "engineering",
+                        "category": "general",
                     },
                 },
                 "routing": {
-                    "agile": "deepseek-r1",
-                    "architecture": "deepseek-r1",
-                    "development": "qwen3-coder",
-                    "qa": "qwen3-coder",
-                    "code_review": "qwen3-coder",
-                    "knowledge": "qwen3-coder",
-                    "devops": "qwen3-coder",
-                    "production": "deepseek-r1",
-                    "project_management": "deepseek-r1",
+                    "agile": "gemini-flash-latest",
+                    "architecture": "gemini-flash-latest",
+                    "development": "gemini-flash-latest",
+                    "qa": "gemini-flash-latest",
+                    "code_review": "gemini-flash-latest",
+                    "knowledge": "gemini-flash-latest",
+                    "devops": "gemini-flash-latest",
+                    "production": "gemini-flash-latest",
+                    "project_management": "gemini-flash-latest",
                 },
                 "defaults": {
                     "max_tokens": 4096,
@@ -86,7 +78,7 @@ class AIRouter:
     def get_model_for_task(self, task_type: str) -> str:
         """Get the model name assigned to a task type."""
         routing = self._config.get("routing", {})
-        return routing.get(task_type, "deepseek-r1")
+        return routing.get(task_type, "gemini-flash-latest")
 
     def get_model_config(self, model_name: str) -> dict[str, Any]:
         """Get full configuration for a model."""
@@ -108,7 +100,7 @@ class AIRouter:
         """
         model_name = self.get_model_for_task(task_type)
         model_cfg = self.get_model_config(model_name)
-        provider_name = model_cfg.get("provider", "nvidia_nim")
+        provider_name = model_cfg.get("provider", "gemini")
         provider_cfg = self.get_provider_config(provider_name)
 
         return {

@@ -33,16 +33,19 @@ export default function DevOpsPage({
   const configs = [...pipelines, ...infra];
 
   const handleGenerate = async () => {
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: devopsKeys.pipelines(projectId) });
+      queryClient.invalidateQueries({ queryKey: devopsKeys.infra(projectId) });
+    };
     try {
-      const res = await genDevOps.mutateAsync() as { task_id?: string };
+      const res = await genDevOps.mutateAsync({}) as { task_id?: string };
       if (res.task_id) {
-        await startStream(res.task_id, "/devops", () => {
-          queryClient.invalidateQueries({ queryKey: devopsKeys.pipelines(projectId) });
-          queryClient.invalidateQueries({ queryKey: devopsKeys.infra(projectId) });
-        });
+        await startStream(res.task_id, "/devops", invalidate);
       }
-    } catch (err) {
+    } catch {
       // Error handled by UI toasts
+    } finally {
+      invalidate();
     }
   };
 
@@ -64,12 +67,7 @@ export default function DevOpsPage({
           status="draft"
           onGenerate={handleGenerate}
           isGenerating={isGenerating}
-          onChat={() => {}}
-          onEdit={() => {}}
-          onApprove={() => {}}
-          onHistory={() => {}}
           onRegenerate={handleGenerate}
-          onExport={() => {}}
         />
       </div>
 

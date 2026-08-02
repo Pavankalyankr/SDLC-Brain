@@ -32,3 +32,8 @@ class GenerateCodeRequest(BaseModel):
     project_id: str
     story_id: str | None = None
     instructions: str | None = None
+
+
+class CodeFileStatusUpdate(BaseModel):
+    status: str
+    feedback: str | None = None

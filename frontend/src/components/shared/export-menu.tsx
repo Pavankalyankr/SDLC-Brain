@@ -5,7 +5,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -22,6 +21,7 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
       <DropdownMenuTrigger
         render={
           <Button
+            type="button"
             variant="outline"
             size="sm"
             disabled={disabled}
@@ -33,9 +33,10 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
         }
       />
       <DropdownMenuContent align="end" className="w-48 bg-[var(--background-elevated)] border-[var(--border)]">
-        <DropdownMenuLabel className="text-xs text-[var(--foreground-tertiary)]">Export Format</DropdownMenuLabel>
+        <div className="px-2 py-1.5 text-xs font-semibold text-[var(--foreground-tertiary)]">Export Format</div>
         <DropdownMenuSeparator className="bg-[var(--border)]" />
         <DropdownMenuItem
+          onSelect={() => onExport("pdf")}
           onClick={() => onExport("pdf")}
           className="gap-2 text-xs text-[var(--foreground)] focus:bg-[var(--background-card)] focus:text-[var(--foreground)] cursor-pointer"
         >
@@ -43,6 +44,7 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
           PDF Document
         </DropdownMenuItem>
         <DropdownMenuItem
+          onSelect={() => onExport("docx")}
           onClick={() => onExport("docx")}
           className="gap-2 text-xs text-[var(--foreground)] focus:bg-[var(--background-card)] focus:text-[var(--foreground)] cursor-pointer"
         >
@@ -50,6 +52,7 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
           Word Document (DOCX)
         </DropdownMenuItem>
         <DropdownMenuItem
+          onSelect={() => onExport("md")}
           onClick={() => onExport("md")}
           className="gap-2 text-xs text-[var(--foreground)] focus:bg-[var(--background-card)] focus:text-[var(--foreground)] cursor-pointer"
         >
@@ -57,6 +60,7 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
           Markdown
         </DropdownMenuItem>
         <DropdownMenuItem
+          onSelect={() => onExport("json")}
           onClick={() => onExport("json")}
           className="gap-2 text-xs text-[var(--foreground)] focus:bg-[var(--background-card)] focus:text-[var(--foreground)] cursor-pointer"
         >

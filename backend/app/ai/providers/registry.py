@@ -6,7 +6,7 @@ Resolves provider name → provider instance.
 """
 
 from app.ai.providers.base import BaseLLMProvider
-from app.ai.providers.litellm_provider import LiteLLMProvider
+from app.ai.providers.gemini_provider import GeminiProvider
 
 
 class ProviderRegistry:
@@ -37,17 +37,16 @@ class ProviderRegistry:
             if not cfg.get("enabled", True):
                 continue
 
-            api_base = cfg.get("api_base", "")
             api_key = cfg.get("api_key", "")
 
-            # Resolve environment variable references like ${NVIDIA_NIM_API_KEY}
-            if api_base.startswith("${") and api_base.endswith("}"):
-                api_base = os.environ.get(api_base[2:-1], api_base)
+            # Resolve environment variable references like ${GEMINI_API_KEY}
             if api_key.startswith("${") and api_key.endswith("}"):
                 api_key = os.environ.get(api_key[2:-1], api_key)
 
-            provider = LiteLLMProvider(api_base=api_base or None, api_key=api_key or None)
-            self.register(name, provider)
+            if name == "gemini":
+                provider = GeminiProvider(api_key=api_key or None)
+                self.register(name, provider)
+            # Add future providers here if needed
 
 
 # Singleton

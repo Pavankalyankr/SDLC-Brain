@@ -21,6 +21,8 @@ class SystemDesign(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    source_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # requirements, epics, features, stories
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     architecture_type: Mapped[str] = mapped_column(String(50), default="microservices")  # monolith, microservices, serverless, event-driven
@@ -49,6 +51,8 @@ class APIContract(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     system_design_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("system_designs.id"), nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     method: Mapped[str] = mapped_column(String(10), nullable=False)  # GET, POST, PUT, DELETE, PATCH
     path: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[str] = mapped_column(String(500), default="")
@@ -77,6 +81,8 @@ class DBSchema(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     system_design_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("system_designs.id"), nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     table_name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     columns: Mapped[str] = mapped_column(Text, default="[]")  # JSON array of column definitions

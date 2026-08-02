@@ -130,6 +130,12 @@ class StoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class StoryMetadataUpdate(BaseModel):
+    priority: str | None = None
+    story_points: int | None = None
+    sprint: str | None = None
+
+
 # --- Generation Request ---
 
 class GenerateRequest(BaseModel):
