@@ -46,10 +46,6 @@ class ProjectService:
         workspace_path = Path(settings.WORKSPACE_ROOT) / project.id
         workspace_path.mkdir(parents=True, exist_ok=True)
 
-        # Create sub-directories
-        for subdir in ["generated", "repository", "uploads", "artifacts", "exports"]:
-            (workspace_path / subdir).mkdir(exist_ok=True)
-
         project.workspace_path = str(workspace_path)
 
         created = await project_repository.create(db, project)

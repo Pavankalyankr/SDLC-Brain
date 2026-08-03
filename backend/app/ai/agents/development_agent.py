@@ -1,14 +1,15 @@
 """
 SDLC Brain — Development Agent
 
-AI agent for generating production-quality code files.
-Uses Qwen3-Coder via the orchestrator.
-Gate: requires approved stories + architecture.
+AI agent for generating and modifying production-quality code files.
+Uses Gemini Flash via the orchestrator for full-repository understanding and modification.
 """
 
 import json
 import logging
 
+import asyncio
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.orchestrator.orchestrator import orchestrator
@@ -18,12 +19,13 @@ from app.modules.agile.repository import agile_repository
 from app.modules.architecture.repository import architecture_repository
 from app.modules.development.models import CodeFile
 from app.modules.development.repository import development_repository
+from app.modules.development.workspace import workspace_manager
 
 logger = logging.getLogger(__name__)
 
 
 class DevelopmentAgent:
-    """Code generation agent powered by Qwen3-Coder."""
+    """Code generation and refactoring agent powered by Gemini Flash."""
 
     async def generate_code_files(
         self,
@@ -32,14 +34,41 @@ class DevelopmentAgent:
         project_id: str,
         instructions: str = "",
     ) -> list[CodeFile]:
-        """Generate code files from approved stories + architecture."""
-        await event_manager.publish_thinking(task_id, "Analyzing approved stories and architecture...")
+        """Generate or modify code files from existing workspace code, instructions, and architecture."""
+        await event_manager.publish_thinking(task_id, "Scanning complete project codebase and directory structure for full repository understanding...")
+        
+        workspace_summary = "Workspace is currently empty (no existing project files found)."
+        file_count = 0
+        try:
+            workspace_files = await workspace_manager.list_files(project_id)
+            file_paths = [
+                f["path"] for f in workspace_files 
+                if not f.get("is_dir") and not any(f["path"].endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".ico", ".webp", ".pdf", ".zip", ".pyc", ".exe"])
+            ]
+            if file_paths:
+                codebase_snippets = []
+                for fp in file_paths[:35]:  # Analyze up to 35 core source files in full detail
+                    try:
+                        f_content = await workspace_manager.read_file(project_id, fp)
+                        lines = f_content.splitlines()
+                        if len(lines) > 450:
+                            f_content = "\n".join(lines[:450]) + "\n...[truncated remainder of large file]"
+                        codebase_snippets.append(f"### File: `{fp}`\n```\n{f_content}\n```")
+                    except Exception:
+                        continue
+                file_count = len(codebase_snippets)
+                workspace_summary = f"Complete Existing Codebase ({len(file_paths)} total source files in workspace):\n\n" + "\n\n".join(codebase_snippets)
+                await event_manager.publish_thinking(task_id, f"📖 Ingested complete codebase! Analyzed {file_count} live source files in your sandbox.")
+            else:
+                await event_manager.publish_thinking(task_id, "📁 Workspace currently clean/empty. Ready for new project generation.")
+        except Exception:
+            workspace_summary = "Workspace currently empty or unreadable."
 
-        # Gather context
+        # Gather agile and architectural context
         stories = await agile_repository.get_approved_stories(db, project_id)
-        if not stories:
+        if not stories and file_count == 0 and not instructions:
             await event_manager.publish_error(
-                task_id, "No approved stories found. Complete and approve the Agile flow first."
+                task_id, "No approved agile stories, instructions, or existing code found. Provide prompt instructions or open an existing codebase folder."
             )
             return []
 
@@ -50,19 +79,19 @@ class DevelopmentAgent:
         stories_text = "\n".join(
             f"**{s.title}** ({s.priority}):\n{s.description}\nCriteria: {s.acceptance_criteria}"
             for s in stories
-        )
-        arch_text = "\n".join(f"**{d.title}**: {d.description}" for d in designs) if designs else "Not yet defined"
+        ) if stories else "No formal agile stories selected — prioritize user chat directives and existing codebase refactoring."
+        arch_text = "\n".join(f"**{d.title}**: {d.description}" for d in designs) if designs else "Rely entirely on modular software engineering principles."
         api_text = "\n".join(
             f"{c.method} {c.path}: {c.summary}" for c in api_contracts
-        ) if api_contracts else "Not yet defined"
+        ) if api_contracts else "Not specified"
         db_text = "\n".join(
             f"Table `{s.table_name}`: {s.description}" for s in db_schemas
-        ) if db_schemas else "Not yet defined"
+        ) if db_schemas else "Not specified"
 
-        await event_manager.publish_thinking(task_id, "Generating code with Qwen3-Coder...")
+        await event_manager.publish_thinking(task_id, "🚀 Generating architectural modifications and enterprise code with Gemini Flash...")
 
         system_prompt, messages = development_prompts.code_generation_prompt(
-            stories_text, arch_text, api_text, db_text, instructions
+            stories_text, arch_text, api_text, db_text, instructions, workspace_context=workspace_summary
         )
 
         result = await orchestrator.generate(
@@ -90,6 +119,19 @@ class DevelopmentAgent:
             )
             created = await development_repository.create_code_file(db, code_file)
             code_files.append(created)
+            try:
+                await workspace_manager.write_file(project_id, created.file_path, created.content)
+                await event_manager.publish_thinking(task_id, f"📝 Saved file `{created.file_path}`")
+            except Exception as e:
+                logger.error(f"Failed to write generated code file to workspace: {e}")
+
+            # Execute background terminal command if requested by the agent
+            cmd = item.get("command_to_run")
+            if cmd:
+                await event_manager.publish_thinking(task_id, f"⚡ Executing command in terminal: `{cmd}`")
+                cmd_output = await self._execute_terminal_command(project_id, cmd)
+                display_output = cmd_output[:500] + ("\n...(truncated)" if len(cmd_output) > 500 else "")
+                await event_manager.publish_thinking(task_id, f"💻 Terminal Output (`{cmd}`):\n```\n{display_output}\n```")
 
         await db.commit()
         await event_manager.publish_complete(task_id, {
@@ -116,6 +158,24 @@ class DevelopmentAgent:
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse AI response as JSON: {content[:300]}")
             return []
+
+    async def _execute_terminal_command(self, project_id: str, command: str) -> str:
+        workspace_dir = Path("/app/workspace") / project_id
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(workspace_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            output = stdout.decode('utf-8', errors='replace').strip() if stdout else ""
+            return output or f"Command `{command}` finished successfully (exit code {proc.returncode})."
+        except asyncio.TimeoutError:
+            return f"Command `{command}` timed out after 30 seconds."
+        except Exception as e:
+            return f"Error executing command `{command}`: {e}"
 
 
 # Singleton

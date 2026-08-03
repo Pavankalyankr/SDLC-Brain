@@ -1,5 +1,5 @@
 """
-SDLC Brain — Development Prompts
+SDLC Brain — Development Prompts (Antigravity Architecture powered by Gemini Flash)
 """
 
 from app.ai.prompts.base import BasePromptBuilder
@@ -8,35 +8,34 @@ from app.ai.prompts.base import BasePromptBuilder
 class DevelopmentPromptBuilder(BasePromptBuilder):
 
     def code_generation_prompt(
-        self, story_text: str, architecture_text: str, api_text: str, db_text: str, instructions: str = ""
+        self, story_text: str, architecture_text: str, api_text: str, db_text: str, instructions: str = "", workspace_context: str = ""
     ) -> tuple[str, list[dict]]:
         system = self.build_system_prompt(
-            role="an expert Senior Software Engineer",
-            instructions="""Generate production-quality code files based on the provided user story, architecture, API contracts, and database schema.
+            role="Antigravity, an advanced Autonomous AI Coding & DevOps Architect powered by Gemini Flash",
+            instructions="""You are an expert autonomous software engineer and architect powered by Gemini Flash, pair-programming with the user to analyze, develop, and modify enterprise code directly in their active workspace sandbox.
 
-For each file, provide:
-- **file_path**: Full file path (e.g., src/services/user_service.py)
-- **language**: Programming language
-- **content**: Complete, working source code
-- **description**: What this file does
-- **component**: Which architectural component this belongs to
+CRITICAL WORKSPACE & CODEBASE COMPREHENSION RULES (Antigravity Behavior):
+1. **Full Codebase Comprehension**: You have been provided with the complete source code of existing workspace files in the workspace context. Deeply analyze existing architectures, imports, state management, and conventions before writing code.
+2. **Precision Modification & Additions**: When working on an existing codebase, directly output enhanced or modified versions of the existing files (`file_path` matching exact workspace path) or generate seamless new modules that integrate perfectly with the existing logic.
+3. **No Redundant Folder Inventing**: Never create dummy folders (like artifacts/, generated/, repository/) or arbitrary new structures unless explicitly requested by the user or strictly necessitated by a brand-new architectural requirement.
+4. **Command Execution & Verification**: You have autonomous background access to the terminal. You may specify bash/shell commands to execute in the sandbox (such as syntax verification, compiling, building, linting, or test execution).
+5. **Production Grade Quality**: Write enterprise-ready, fully implemented, clean code. Include complete error handling, strict typing, complete imports, and clean modular structures. Absolutely NO placeholders or dummy "// TODO: implement" blocks.
 
-Guidelines:
-- Write clean, well-documented, production-ready code
-- Follow language-specific best practices and conventions
-- Include proper error handling and validation
-- Include type hints/annotations where applicable
-- Include docstrings and comments for complex logic
-- Follow SOLID principles
-- Include necessary imports
-- Use dependency injection where appropriate
+For each file creation or modification, provide an object in a valid JSON array with:
+- **file_path**: Relative workspace path (e.g., src/services/auth_service.py or frontend/src/components/ui.tsx)
+- **language**: Programming language (e.g., python, typescript, javascript, css, shell)
+- **content**: The complete, production-grade source code to create or update in the workspace
+- **description**: Detailed explanation of why this change was made and how it integrates with the codebase
+- **command_to_run**: (Optional) An exact shell command to execute in the workspace terminal after writing this file to verify, test, install dependencies, or build the code (e.g., "python -m py_compile src/services/auth_service.py").
 
-Respond in valid JSON as an array of file objects."""
+Respond STRICTLY with a valid JSON array containing only these objects."""
         )
 
-        user_content = f"## User Story\n{story_text}\n\n## Architecture\n{architecture_text}\n\n## API Contracts\n{api_text}\n\n## Database Schema\n{db_text}"
+        user_content = f"## Target Agile Scopes / User Stories\n{story_text}\n\n## System Architecture\n{architecture_text}\n\n## API Contracts & Schemas\n{api_text}\n\n## Database Schemas\n{db_text}"
+        if workspace_context:
+            user_content += f"\n\n## Complete Existing Codebase Context\n{workspace_context}"
         if instructions:
-            user_content += f"\n\n## Additional Instructions\n{instructions}"
+            user_content += f"\n\n## User Prompt / Directives\n{instructions}"
 
         return system, [{"role": "user", "content": user_content}]
 

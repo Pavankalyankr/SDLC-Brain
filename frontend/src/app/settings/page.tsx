@@ -31,11 +31,11 @@ import { cn } from "@/lib/utils";
 const aiRouting = [
   { task: "agile", label: "Agile / Planning", model: "deepseek-r1", category: "Reasoning" },
   { task: "architecture", label: "Architecture", model: "deepseek-r1", category: "Reasoning" },
-  { task: "development", label: "Development", model: "qwen3-coder", category: "Engineering" },
-  { task: "qa", label: "QA & Testing", model: "qwen3-coder", category: "Engineering" },
-  { task: "code_review", label: "Code Review", model: "qwen3-coder", category: "Engineering" },
-  { task: "knowledge", label: "Knowledge", model: "qwen3-coder", category: "Engineering" },
-  { task: "devops", label: "DevOps", model: "qwen3-coder", category: "Engineering" },
+  { task: "development", label: "Development", model: "gemini-flash-latest", category: "Engineering" },
+  { task: "qa", label: "QA & Testing", model: "gemini-flash-latest", category: "Engineering" },
+  { task: "code_review", label: "Code Review", model: "gemini-flash-latest", category: "Engineering" },
+  { task: "knowledge", label: "Knowledge", model: "gemini-flash-latest", category: "Engineering" },
+  { task: "devops", label: "DevOps", model: "gemini-flash-latest", category: "Engineering" },
   { task: "production", label: "Production Support", model: "deepseek-r1", category: "Reasoning" },
 ];
 
@@ -148,7 +148,7 @@ export default function SettingsPage() {
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--background-elevated)] border-[var(--border)]">
                     <SelectItem value="deepseek-r1" className="text-xs text-[var(--foreground)]">DeepSeek-R1</SelectItem>
-                    <SelectItem value="qwen3-coder" className="text-xs text-[var(--foreground)]">Qwen3-Coder</SelectItem>
+                    <SelectItem value="gemini-flash-latest" className="text-xs text-[var(--foreground)]">Gemini Flash</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

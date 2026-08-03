@@ -12,8 +12,9 @@ Routes:
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,3 +95,58 @@ async def stream_dev_events(task_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+@router.websocket("/ws/terminal/{project_id}")
+async def terminal_websocket(websocket: WebSocket, project_id: str):
+    """WebSocket endpoint for real-time terminal interaction."""
+    await websocket.accept()
+    import asyncio
+
+    from app.modules.development.terminal import terminal_manager
+
+    session = await terminal_manager.create_session(project_id)
+
+    async def read_from_terminal():
+        while True:
+            data = await session.read(1024)
+            if data:
+                await websocket.send_text(data.decode('utf-8', errors='replace'))
+            else:
+                break
+
+    task = asyncio.create_task(read_from_terminal())
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await session.write(data)
+    except WebSocketDisconnect:
+        task.cancel()
+        terminal_manager.cleanup(session.id)
+
+# --- Workspace API ---
+
+class FileWriteRequest(BaseModel):
+    content: str
+
+@router.get("/workspace/{project_id}/files")
+async def list_workspace_files(project_id: str):
+    from app.modules.development.workspace import workspace_manager
+    return await workspace_manager.list_files(project_id)
+
+@router.get("/workspace/{project_id}/file/{file_path:path}")
+async def read_workspace_file(project_id: str, file_path: str):
+    from app.modules.development.workspace import workspace_manager
+    content = await workspace_manager.read_file(project_id, file_path)
+    return Response(content=content, media_type="text/plain; charset=utf-8")
+
+@router.post("/workspace/{project_id}/file/{file_path:path}")
+async def write_workspace_file(project_id: str, file_path: str, data: FileWriteRequest):
+    from app.modules.development.workspace import workspace_manager
+    await workspace_manager.write_file(project_id, file_path, data.content)
+    return {"status": "success"}
+
+@router.delete("/workspace/{project_id}/file/{file_path:path}")
+async def delete_workspace_file(project_id: str, file_path: str):
+    from app.modules.development.workspace import workspace_manager
+    await workspace_manager.delete_file(project_id, file_path)
+    return {"status": "success"}

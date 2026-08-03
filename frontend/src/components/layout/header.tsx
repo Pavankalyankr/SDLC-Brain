@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 
 const models = [
   { id: "deepseek-r1", label: "DeepSeek-R1", category: "Reasoning" },
-  { id: "qwen3-coder", label: "Qwen3-Coder", category: "Engineering" },
+  { id: "gemini-flash-latest", label: "Gemini Flash", category: "Engineering" },
 ];
 
 export function Header() {
