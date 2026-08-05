@@ -22,13 +22,13 @@ from app.modules.project.service import project_service
 router = APIRouter()
 
 
-@router.get("/", response_model=list[ProjectListResponse])
+@router.get("", response_model=list[ProjectListResponse])
 async def list_projects(db: AsyncSession = Depends(get_session)):
     """Get all projects."""
     return await project_service.list_projects(db)
 
 
-@router.post("/", response_model=ProjectResponse, status_code=201)
+@router.post("", response_model=ProjectResponse, status_code=201)
 async def create_project(
     data: ProjectCreate,
     db: AsyncSession = Depends(get_session),

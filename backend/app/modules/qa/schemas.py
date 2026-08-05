@@ -49,6 +49,8 @@ class TestPlanResponse(BaseModel):
 
 class GenerateQARequest(BaseModel):
     project_id: str
+    target_stage: str | None = None
+    target_id: str | None = None
     instructions: str | None = None
 
 

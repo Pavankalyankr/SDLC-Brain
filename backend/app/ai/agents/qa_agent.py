@@ -31,14 +31,19 @@ class QAAgent:
         db: AsyncSession,
         project_id: str,
         instructions: str = "",
+        target_stage: str | None = None,
+        target_id: str | None = None,
     ) -> list[TestCase]:
         """Generate test cases from approved stories."""
         await event_manager.publish_thinking(task_id, "Gathering approved stories for test generation...")
 
         stories = await agile_repository.get_approved_stories(db, project_id)
+        if target_stage == "stories" and target_id:
+            stories = [s for s in stories if s.id == target_id]
+
         if not stories:
             await event_manager.publish_error(
-                task_id, "No approved stories found. Approve stories in the Agile module first."
+                task_id, "No approved stories found for the target scope."
             )
             return []
 
@@ -53,9 +58,24 @@ class QAAgent:
         designs = await architecture_repository.get_designs(db, project_id)
         arch_text = "\n".join(f"{d.title}: {d.description}" for d in designs) if designs else ""
 
+        await event_manager.publish_thinking(task_id, "Scanning complete project codebase for QA test generation...")
+        
+        from app.modules.development.workspace import workspace_manager
+        workspace_files = await workspace_manager.list_files(project_id)
+        workspace_summary = ""
+        
+        for wf in workspace_files:
+            if not wf["is_dir"]:
+                try:
+                    content = await workspace_manager.read_file(project_id, wf["path"])
+                    if len(content) < 50000:
+                        workspace_summary += f"\n--- {wf['path']} ---\n{content}\n"
+                except Exception:
+                    pass
+
         await event_manager.publish_thinking(task_id, "Generating test cases with Qwen3-Coder...")
 
-        system_prompt, messages = qa_prompts.test_cases_prompt(stories_text, arch_text, instructions)
+        system_prompt, messages = qa_prompts.test_cases_prompt(stories_text, arch_text, instructions, workspace_context=workspace_summary)
 
         result = await orchestrator.generate(
             task_type="qa",

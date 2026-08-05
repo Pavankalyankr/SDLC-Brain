@@ -52,7 +52,7 @@ async def generate_review(data: GenerateReviewRequest, db: AsyncSession = Depend
     async def _worker(tid: str):
         from app.modules.code_review.service import code_review_service
         return await code_review_service.generate_code_review(
-            tid, db, data.project_id, data.instructions or ""
+            tid, db, data.project_id, data.target_stage, data.target_id, data.instructions or ""
         )
 
     await task_queue.submit("code_review", data.project_id, _worker, task_id=task_id)

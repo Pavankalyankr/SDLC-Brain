@@ -59,7 +59,7 @@ async def generate_code(data: GenerateCodeRequest, db: AsyncSession = Depends(ge
     async def _worker(tid: str):
         from app.modules.development.service import development_service
         return await development_service.generate_code_files(
-            tid, db, data.project_id, data.instructions or "", data.chat_history
+            tid, db, data.project_id, data.instructions or "", data.chat_history, data.target_stage, data.target_id
         )
 
     await task_queue.submit("development", data.project_id, _worker, task_id=task_id)

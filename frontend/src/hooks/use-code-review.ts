@@ -42,7 +42,7 @@ export function useCodeReviews(projectId: string) {
 
 export function useGenerateCodeReview(projectId: string) {
   return useMutation({
-    mutationFn: (data?: { instructions?: string }) =>
+    mutationFn: (data?: { target_stage?: string; target_id?: string; instructions?: string }) =>
       api.post<{ task_id: string; status: string }>("/code-review/generate", {
         project_id: projectId,
         ...data,

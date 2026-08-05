@@ -41,7 +41,7 @@ export function useTestCases(projectId: string) {
 
 export function useGenerateTestCases(projectId: string) {
   return useMutation({
-    mutationFn: (data?: { instructions?: string }) =>
+    mutationFn: (data?: { instructions?: string; target_stage?: string; target_id?: string }) =>
       api.post<{ task_id: string; status: string }>("/qa/generate", {
         project_id: projectId,
         ...data,

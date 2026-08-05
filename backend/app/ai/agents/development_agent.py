@@ -34,6 +34,8 @@ class DevelopmentAgent:
         project_id: str,
         instructions: str = "",
         chat_history: list[dict[str, str]] | None = None,
+        target_stage: str | None = None,
+        target_id: str | None = None,
     ) -> list[CodeFile]:
         """Generate or modify code files from existing workspace code, instructions, and architecture."""
         await event_manager.publish_thinking(task_id, "Scanning complete project codebase and directory structure for full repository understanding...")
@@ -67,6 +69,11 @@ class DevelopmentAgent:
 
         # Gather agile and architectural context
         stories = await agile_repository.get_approved_stories(db, project_id)
+        
+        # Target specific scope if requested
+        if target_stage == "stories" and target_id:
+            stories = [s for s in stories if s.id == target_id]
+
         if not stories and file_count == 0 and not instructions:
             await event_manager.publish_error(
                 task_id, "No approved agile stories, instructions, or existing code found. Provide prompt instructions or open an existing codebase folder."

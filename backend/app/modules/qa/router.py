@@ -50,11 +50,26 @@ async def generate_tests(data: GenerateQARequest, db: AsyncSession = Depends(get
     async def _worker(tid: str):
         from app.modules.qa.service import qa_service
         return await qa_service.generate_tests(
-            tid, db, data.project_id, data.instructions or ""
+            tid, db, data.project_id, data.instructions or "", data.target_stage, data.target_id
         )
 
     await task_queue.submit("qa", data.project_id, _worker, task_id=task_id)
     return {"task_id": task_id, "status": "generating", "type": "test_cases"}
+
+
+@router.post("/generate-code")
+async def generate_test_code(data: GenerateQARequest, db: AsyncSession = Depends(get_session)):
+    """Queue AI test code generation from approved test cases."""
+    task_id = f"qa-code-{uuid.uuid4().hex[:8]}"
+
+    async def _worker(tid: str):
+        from app.modules.qa.service import qa_service
+        return await qa_service.generate_test_code(
+            tid, db, data.project_id, data.instructions or "", data.target_stage, data.target_id
+        )
+
+    await task_queue.submit("qa", data.project_id, _worker, task_id=task_id)
+    return {"task_id": task_id, "status": "generating", "type": "test_code"}
 
 
 @router.patch("/test-cases/{test_case_id}/status", response_model=TestCaseResponse)

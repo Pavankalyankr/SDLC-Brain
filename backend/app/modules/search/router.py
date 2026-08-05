@@ -7,7 +7,7 @@ from app.modules.agile.models import Epic, Feature, Requirement, Story
 
 router = APIRouter()
 
-@router.get("/")
+@router.get("")
 async def global_search(q: str = "", project_id: str | None = None, db: AsyncSession = Depends(get_session)):
     """Global search across all artifact types (Ctrl+K)."""
     if not q:
