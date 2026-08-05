@@ -49,6 +49,8 @@ services:
     volumes:
       - ./backend:/app
       - backend_workspace:/app/workspace
+      - C:\:/mnt/c
+      - /c:/c
     env_file:
       - ./backend/.env
     environment:

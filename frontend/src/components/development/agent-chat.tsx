@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, Bot, User, Loader2, Sparkles, Settings } from "lucide-react";
+import { Send, Bot, User, Loader2, Sparkles, Settings, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ export function AgentChat({ projectId }: AgentChatProps) {
     }
   ]);
   const [busy, setBusy] = useState(false);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -49,6 +50,11 @@ export function AgentChat({ projectId }: AgentChatProps) {
     ]);
 
     try {
+      const chatHistory = messages.map(m => ({
+        role: m.role === "agent" ? "assistant" : "user",
+        content: m.content
+      }));
+
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
       const res = await fetch(`${API_BASE}/development/generate`, {
         method: "POST",
@@ -56,12 +62,14 @@ export function AgentChat({ projectId }: AgentChatProps) {
         body: JSON.stringify({
           project_id: projectId,
           instructions: userPrompt,
+          chat_history: chatHistory
         })
       });
 
       if (!res.ok) throw new Error("Failed to communicate with AI orchestrator");
       const data = await res.json();
       const taskId = data.task_id;
+      setCurrentTaskId(taskId);
 
       // Listen to SSE progress stream
       const eventSource = new EventSource(`${API_BASE}/development/stream/${taskId}`);
@@ -69,39 +77,63 @@ export function AgentChat({ projectId }: AgentChatProps) {
       eventSource.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          if (payload.event === "thinking" && payload.data?.message) {
+          if (payload.type === "ai_thinking" && payload.data?.message) {
             setMessages(prev => {
               const list = [...prev];
               const last = list[list.length - 1];
               if (last && last.role === "agent" && last.isThinking) {
+                const updatedLast = { ...last };
                 const msg = payload.data.message;
                 if (msg.startsWith("📝") || msg.startsWith("⚡") || msg.startsWith("💻")) {
-                  last.content += `\n\n${msg}`;
+                  updatedLast.content += `\n\n${msg}`;
                 } else {
                   // If it's general thinking, replace the header or append if already has tool logs
-                  if (last.content.includes("\n\n")) {
-                    last.content += `\n💭 ${msg}`;
+                  if (updatedLast.content.includes("\n\n")) {
+                    updatedLast.content += `\n💭 ${msg}`;
                   } else {
-                    last.content = `💭 ${msg}`;
+                    updatedLast.content = `💭 ${msg}`;
                   }
                 }
+                list[list.length - 1] = updatedLast;
               }
               return list;
             });
-          } else if (payload.event === "complete") {
+          } else if (payload.type === "ai_complete") {
             const count = payload.data?.count || 0;
+            const chatMessage = payload.data?.message;
             setMessages(prev => {
               const list = [...prev];
               const last = list[list.length - 1];
               if (last && last.role === "agent") {
-                last.content += `\n\n✅ Autonomous task completed! Synchronized ${count} file(s) and executed system terminal operations in your workspace sandbox.`;
-                last.isThinking = false;
+                if (last.content.includes("✅ Autonomous task completed")) {
+                  return list;
+                }
+                
+                const updatedLast = { ...last };
+                let originalLogs = updatedLast.content.replace("⚡ Initializing Antigravity Agent and scanning workspace...", "").trim();
+                if (originalLogs.startsWith("💭")) {
+                   originalLogs = originalLogs.substring(2).trim();
+                }
+                
+                let text = "";
+                if (chatMessage) {
+                  text += `${chatMessage}\n\n`;
+                }
+                
+                if (originalLogs) {
+                   text += `**Agent Logs:**\n${originalLogs}\n\n`;
+                }
+                text += `✅ Autonomous task completed! Synchronized ${count} file(s).`;
+                updatedLast.content = text;
+                updatedLast.isThinking = false;
+                list[list.length - 1] = updatedLast;
               }
               return list;
             });
             eventSource.close();
             setBusy(false);
-          } else if (payload.event === "error") {
+            setCurrentTaskId(null);
+          } else if (payload.type === "ai_error") {
             const errorMsg = payload.data?.message || "Execution failed";
             setMessages(prev => {
               const list = [...prev];
@@ -114,6 +146,7 @@ export function AgentChat({ projectId }: AgentChatProps) {
             });
             eventSource.close();
             setBusy(false);
+            setCurrentTaskId(null);
           }
         } catch (e) {
           console.error("Error parsing agent stream event:", e);
@@ -123,6 +156,7 @@ export function AgentChat({ projectId }: AgentChatProps) {
       eventSource.onerror = () => {
         eventSource.close();
         setBusy(false);
+        setCurrentTaskId(null);
       };
 
     } catch (err: any) {
@@ -137,6 +171,30 @@ export function AgentChat({ projectId }: AgentChatProps) {
         return list;
       });
       setBusy(false);
+      setCurrentTaskId(null);
+    }
+  };
+
+  const handleStop = async () => {
+    if (!currentTaskId) return;
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+      await fetch(`${API_BASE}/development/task/${currentTaskId}`, {
+        method: "DELETE"
+      });
+      setMessages(prev => {
+        const list = [...prev];
+        const last = list[list.length - 1];
+        if (last && last.role === "agent" && last.isThinking) {
+          last.content = `🛑 Process forcefully stopped by user.\n\n` + last.content;
+          last.isThinking = false;
+        }
+        return list;
+      });
+      setBusy(false);
+      setCurrentTaskId(null);
+    } catch (err) {
+      toast.error("Failed to stop process");
     }
   };
 
@@ -193,14 +251,25 @@ export function AgentChat({ projectId }: AgentChatProps) {
             disabled={busy}
             className="w-full bg-[var(--background-elevated)] border border-[var(--border)] text-[var(--foreground)] text-sm rounded-full py-2.5 pl-4 pr-12 outline-none focus:border-[var(--primary)] transition-colors placeholder:text-[var(--foreground-tertiary)] disabled:opacity-50"
           />
-          <Button
-            size="icon"
-            onClick={handleSend}
-            disabled={!input.trim() || busy}
-            className="absolute right-1 h-7 w-7 rounded-full bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          </Button>
+          {busy ? (
+            <Button
+              size="icon"
+              onClick={handleStop}
+              className="absolute right-1 h-7 w-7 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+              title="Stop Processing"
+            >
+              <Square className="w-3 h-3 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="absolute right-1 h-7 w-7 rounded-full bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5 ml-0.5" />
+            </Button>
+          )}
         </div>
       </div>
     </div>

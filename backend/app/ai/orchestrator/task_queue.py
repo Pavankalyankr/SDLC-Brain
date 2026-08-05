@@ -40,6 +40,7 @@ class AITask:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    asyncio_task: Any = None
 
 
 class TaskQueue:
@@ -77,7 +78,8 @@ class TaskQueue:
         self._tasks[task.id] = task
 
         # Run in background
-        asyncio.create_task(self._execute(task, worker, *args, **kwargs))
+        bg_task = asyncio.create_task(self._execute(task, worker, *args, **kwargs))
+        task.asyncio_task = bg_task
 
         logger.info(f"Task {task.id} submitted ({task_type}) for project {project_id}")
         return task
@@ -114,6 +116,17 @@ class TaskQueue:
     def get_task(self, task_id: str) -> AITask | None:
         """Get a task by ID."""
         return self._tasks.get(task_id)
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a running task."""
+        task = self.get_task(task_id)
+        if task and task.status in (TaskStatus.PENDING, TaskStatus.RUNNING):
+            if task.asyncio_task:
+                task.asyncio_task.cancel()
+            task.status = TaskStatus.CANCELLED
+            task.error = "Task cancelled by user"
+            return True
+        return False
 
     def get_tasks_for_project(self, project_id: str) -> list[AITask]:
         """Get all tasks for a project."""

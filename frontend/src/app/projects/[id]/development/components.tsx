@@ -132,14 +132,14 @@ export function DevelopmentSourceSelector({
       eventSource.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          if (payload.event === "thinking" && payload.data?.message) {
+          if (payload.type === "ai_thinking" && payload.data?.message) {
             toast.loading(`AI: ${payload.data.message}`, { id: taskId });
-          } else if (payload.event === "complete") {
+          } else if (payload.type === "ai_complete") {
             toast.success(`✨ Successfully generated ${payload.data?.count || ""} code file(s) into workspace!`, { id: taskId });
             eventSource.close();
             setGenerating(false);
-          } else if (payload.event === "error") {
-            toast.error(`Error: ${payload.data?.message || "Generation failed"}`, { id: taskId });
+          } else if (payload.type === "ai_error") {
+            toast.error(`Error: ${payload.data?.error || payload.data?.message || "Generation failed"}`, { id: taskId });
             eventSource.close();
             setGenerating(false);
           }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Folder, File, ChevronRight, ChevronDown, Code2, Upload, Plus, Trash2, Loader2 } from "lucide-react";
+import { Folder, File, ChevronRight, ChevronDown, Code2, Upload, Plus, Trash2, Loader2, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,16 @@ export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
   const [uploading, setUploading] = useState(false);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(["."]));
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
+
+  const setFolderInputRef = (element: HTMLInputElement | null) => {
+    folderInputRef.current = element;
+    if (element) {
+      element.setAttribute("webkitdirectory", "true");
+      element.setAttribute("directory", "true");
+      element.setAttribute("mozdirectory", "true");
+    }
+  };
 
   const fetchFiles = async () => {
     try {
@@ -32,9 +41,11 @@ export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
       if (!res.ok) throw new Error("Failed to fetch files");
       const data = await res.json();
       setFiles(data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load workspace files");
+    } catch (err: any) {
+      // Suppress network errors during backend restarts to avoid Next.js dev overlay
+      if (err.name !== "TypeError" || !err.message.includes("Failed to fetch")) {
+        console.warn("Workspace polling error:", err);
+      }
     } finally {
       setLoading(false);
     }
@@ -45,6 +56,11 @@ export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
     const interval = setInterval(fetchFiles, 5000);
     return () => clearInterval(interval);
   }, [projectId]);
+
+  const handleExport = () => {
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+    window.location.href = `${API_BASE}/development/workspace/${projectId}/export-zip`;
+  };
 
   const handleDelete = async (e: React.MouseEvent, file: FileNode) => {
     e.stopPropagation();
@@ -66,37 +82,57 @@ export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0) {
+      toast.success("✨ Opened empty folder successfully!");
+      return;
+    }
     
     setUploading(true);
-    let count = 0;
+    const toastId = toast.loading("Reading selected files & preparing upload...");
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+      const formData = new FormData();
+      let validCount = 0;
       
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const path = file.webkitRelativePath || file.name;
+        const path = (file.webkitRelativePath || file.name).replace(/\\/g, "/");
         
-        // Ignore OS X metadata, git history, and temporary junk
-        if (path.includes("__MACOSX") || path.endsWith(".DS_Store") || path.includes("node_modules") || path.includes(".git/")) {
+        // Comprehensive check to ignore massive build artifacts, dependencies, git history, and non-source binaries
+        if (/(__MACOSX|\.DS_Store|node_modules|\.git|\.dart_tool|\/build|\/target|\.gradle|\.idea|venv|__pycache__|\.next|\/dist|\/android|\/ios|\.svn|Pods|\.dSYM)/i.test(path)) {
+          continue;
+        }
+
+        if (/\.(png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot|mp4|mp3|pdf|zip|tar|gz|exe|dll|so|a|dylib|apk|dex|jar|class|pyc|keystore|lock|webp|bin)$/i.test(path) || file.size > 2000000) {
           continue;
         }
         
-        const text = await file.text();
-        
-        await fetch(`${API_BASE}/development/workspace/${projectId}/file/${encodeURIComponent(path)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text }),
-        });
-        count++;
+        formData.append("files", file);
+        formData.append("paths", path);
+        validCount++;
       }
       
-      toast.success(`Successfully uploaded ${count} file(s) directly to workspace!`);
+      if (validCount === 0) {
+        toast.success("✨ Successfully opened folder (0 code files found after ignoring caches)!", { id: toastId });
+        setUploading(false);
+        return;
+      }
+
+      toast.loading(`Uploading ${validCount} source code files to workspace...`, { id: toastId });
+      const res = await fetch(`${API_BASE}/development/workspace/${projectId}/upload-form`, {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      const finalCount = data.count || validCount;
+      
+      toast.success(`✨ Successfully uploaded ${finalCount} files to workspace!`, { id: toastId });
       fetchFiles();
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to upload files");
+    } catch (err: any) {
+      console.error("Upload failed:", err);
+      toast.error("Failed to upload workspace files: " + (err.message || "Network error"), { id: toastId });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -191,25 +227,25 @@ export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
         <div className="flex flex-col gap-2 w-full">
           <input 
             type="file" 
-            ref={folderInputRef} 
+            ref={setFolderInputRef} 
             onChange={handleFileUpload} 
-            className="hidden" 
+            style={{ display: "none" }} 
             multiple 
-            // @ts-ignore
-            webkitdirectory="true"
-            directory=""
           />
           <input 
             type="file" 
             ref={fileInputRef} 
             onChange={handleFileUpload} 
-            className="hidden" 
+            style={{ display: "none" }} 
             multiple 
           />
           <button 
             type="button"
             className="w-full h-8 px-3 text-xs font-bold text-white bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all border border-[var(--primary)]"
-            onClick={() => folderInputRef.current?.click()}
+            onClick={() => {
+              if (folderInputRef.current) folderInputRef.current.value = "";
+              folderInputRef.current?.click();
+            }}
             disabled={uploading}
             title="Open & import an existing project codebase folder from your computer"
           >
@@ -219,12 +255,25 @@ export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
           <button 
             type="button"
             className="w-full h-8 px-3 text-xs font-bold text-[var(--foreground)] bg-[var(--background-card)] hover:bg-[var(--background-hover)] border border-[var(--border)] rounded-lg flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-all"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              if (fileInputRef.current) fileInputRef.current.value = "";
+              fileInputRef.current?.click();
+            }}
             disabled={uploading}
             title="Upload single or multiple files to workspace"
           >
             <Upload className="w-4 h-4 text-blue-400 shrink-0" />
             <span className="text-[var(--foreground)] font-semibold tracking-wide text-xs">Upload Code Files</span>
+          </button>
+          
+          <button 
+            type="button"
+            className="w-full h-8 px-3 text-xs font-bold text-[var(--foreground)] bg-[var(--background-card)] hover:bg-[var(--background-hover)] border border-[var(--border)] rounded-lg flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-all mt-1"
+            onClick={handleExport}
+            title="Download the entire workspace as a ZIP file"
+          >
+            <Download className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="text-[var(--foreground)] font-semibold tracking-wide text-xs">Download as ZIP</span>
           </button>
         </div>
       </div>
@@ -241,13 +290,16 @@ export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
             <div className="space-y-1">
               <h4 className="text-xs font-semibold text-[var(--foreground)]">No Codebase Open</h4>
               <p className="text-[11px] text-[var(--foreground-secondary)] leading-relaxed">
-                Click <strong>Open Project</strong> above to open an existing folder from your machine for Gemini Flash to analyze & modify.
+                Click <strong>Open Project Folder</strong> above to open an existing folder from your machine for Gemini Flash to analyze & modify.
               </p>
             </div>
             <button
               type="button"
-              className="mt-1 bg-blue-600 text-white hover:bg-blue-500 border border-blue-500 text-xs px-3 h-8 rounded flex items-center gap-1.5 shadow font-bold cursor-pointer"
-              onClick={() => folderInputRef.current?.click()}
+              className="mt-1 bg-blue-600 text-white hover:bg-blue-500 border border-blue-500 text-xs px-3 h-8 rounded flex items-center justify-center gap-1.5 shadow font-bold cursor-pointer"
+              onClick={() => {
+                if (folderInputRef.current) folderInputRef.current.value = "";
+                folderInputRef.current?.click();
+              }}
             >
               <Folder className="w-3.5 h-3.5 text-white fill-current/20" />
               <span>Open Existing Project Folder</span>

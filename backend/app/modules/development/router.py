@@ -11,8 +11,9 @@ Routes:
 
 import uuid
 from datetime import UTC, datetime
+from typing import List
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, Form, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -58,7 +59,7 @@ async def generate_code(data: GenerateCodeRequest, db: AsyncSession = Depends(ge
     async def _worker(tid: str):
         from app.modules.development.service import development_service
         return await development_service.generate_code_files(
-            tid, db, data.project_id, data.instructions or ""
+            tid, db, data.project_id, data.instructions or "", data.chat_history
         )
 
     await task_queue.submit("development", data.project_id, _worker, task_id=task_id)
@@ -86,6 +87,14 @@ async def update_code_file_status(
     await db.refresh(code_file)
     return code_file
 
+
+@router.delete("/task/{task_id}")
+async def cancel_generation_task(task_id: str):
+    """Cancel a running AI generation task."""
+    success = task_queue.cancel_task(task_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Task not found or cannot be cancelled")
+    return {"status": "cancelled", "task_id": task_id}
 
 @router.get("/stream/{task_id}")
 async def stream_dev_events(task_id: str):
@@ -128,10 +137,130 @@ async def terminal_websocket(websocket: WebSocket, project_id: str):
 class FileWriteRequest(BaseModel):
     content: str
 
+class BatchFileItem(BaseModel):
+    path: str
+    content: str
+
+class BatchWriteRequest(BaseModel):
+    files: list[BatchFileItem]
+
+class ImportPathRequest(BaseModel):
+    path: str
+
 @router.get("/workspace/{project_id}/files")
 async def list_workspace_files(project_id: str):
     from app.modules.development.workspace import workspace_manager
     return await workspace_manager.list_files(project_id)
+
+@router.get("/workspace/{project_id}/export-zip")
+async def export_workspace_zip(project_id: str):
+    import os, zipfile, io
+    from pathlib import Path
+    from fastapi.responses import StreamingResponse
+    from app.core.exceptions import NotFoundException
+    
+    workspace_dir = Path("/app/workspace") / project_id
+    if not workspace_dir.exists() or not workspace_dir.is_dir():
+        raise NotFoundException("Workspace directory not found")
+        
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for root, _, files in os.walk(workspace_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, workspace_dir)
+                zip_file.write(file_path, arcname)
+                
+    zip_buffer.seek(0)
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="workspace_{project_id}.zip"'}
+    )
+
+@router.post("/workspace/{project_id}/upload-batch")
+async def write_workspace_files_batch(project_id: str, data: BatchWriteRequest):
+    from app.modules.development.workspace import workspace_manager
+    count = 0
+    for item in data.files:
+        try:
+            await workspace_manager.write_file(project_id, item.path, item.content)
+            count += 1
+        except Exception as e:
+            import logging
+            logging.warning(f"Skipping file {item.path} during batch upload: {e}")
+    return {"status": "success", "count": count}
+
+@router.post("/workspace/{project_id}/upload-form")
+async def upload_workspace_files_form(
+    project_id: str,
+    files: List[UploadFile] = File(...),
+    paths: List[str] = Form(...)
+):
+    from app.modules.development.workspace import workspace_manager
+    count = 0
+    for file_obj, rel_path in zip(files, paths):
+        try:
+            content_bytes = await file_obj.read()
+            content_str = content_bytes.decode("utf-8", errors="replace")
+            await workspace_manager.write_file(project_id, rel_path, content_str)
+            count += 1
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to upload {rel_path}: {e}")
+    return {"status": "success", "count": count}
+
+@router.post("/workspace/{project_id}/import-path")
+async def import_workspace_from_local_path(project_id: str, data: ImportPathRequest):
+    import os, re
+    from pathlib import Path
+    from app.modules.development.workspace import workspace_manager
+    
+    raw_path = data.path.strip()
+    possible_paths = [raw_path]
+    if len(raw_path) >= 2 and raw_path[1] == ":":
+        drive = raw_path[0].lower()
+        subpath = raw_path[2:].replace("\\", "/").lstrip("/")
+        possible_paths.extend([
+            f"/mnt/{drive}/{subpath}",
+            f"/{drive}/{subpath}"
+        ])
+    elif raw_path.startswith("C:\\") or raw_path.startswith("c:\\") or raw_path.startswith("C:/"):
+        sub = raw_path[3:].replace("\\", "/")
+        possible_paths.extend([f"/mnt/c/{sub}", f"/c/{sub}"])
+        
+    actual_dir = None
+    for p in possible_paths:
+        if os.path.exists(p) and os.path.isdir(p):
+            actual_dir = p
+            break
+            
+    if not actual_dir:
+        raise NotFoundException("Local system folder path could not be found or accessed from Docker environment.")
+
+    count = 0
+    ignore_re = re.compile(r'(__MACOSX|\.DS_Store|node_modules|\.git|\.dart_tool|/build|/target|\.gradle|\.idea|venv|__pycache__|\.next|/dist|\.expo|\.svn|Pods|\.dSYM|/android|/ios|\.claude)', re.I)
+    bin_re = re.compile(r'\.(png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot|mp4|mp3|pdf|zip|tar|gz|exe|dll|so|a|dylib|apk|dex|jar|class|pyc|keystore|lock|webp|bin)$', re.I)
+    
+    for dirpath, dirnames, filenames in os.walk(actual_dir):
+        # Prune ignored directories in place so os.walk never enters massive build caches!
+        dirnames[:] = [d for d in dirnames if not ignore_re.search(f"/{d}") and d not in ["build", "node_modules", ".git", ".dart_tool", "Pods", ".gradle", "android", "ios", "venv", "__pycache__", "dist", "target", ".next", ".claude"]]
+        for fname in filenames:
+            full_path = os.path.join(dirpath, fname)
+            rel_path = os.path.relpath(full_path, actual_dir).replace("\\", "/")
+            if ignore_re.search(f"/{rel_path}") or bin_re.search(fname):
+                continue
+            try:
+                if os.path.getsize(full_path) <= 2000000:
+                    with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                        content_str = f.read()
+                    await workspace_manager.write_file(project_id, rel_path, content_str)
+                    count += 1
+            except Exception as e:
+                import logging
+                logging.warning(f"Skipping {rel_path}: {e}")
+                
+    return {"status": "success", "count": count, "resolved_path": actual_dir}
 
 @router.get("/workspace/{project_id}/file/{file_path:path}")
 async def read_workspace_file(project_id: str, file_path: str):

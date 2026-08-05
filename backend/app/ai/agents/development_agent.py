@@ -33,6 +33,7 @@ class DevelopmentAgent:
         db: AsyncSession,
         project_id: str,
         instructions: str = "",
+        chat_history: list[dict[str, str]] | None = None,
     ) -> list[CodeFile]:
         """Generate or modify code files from existing workspace code, instructions, and architecture."""
         await event_manager.publish_thinking(task_id, "Scanning complete project codebase and directory structure for full repository understanding...")
@@ -90,9 +91,12 @@ class DevelopmentAgent:
 
         await event_manager.publish_thinking(task_id, "🚀 Generating architectural modifications and enterprise code with Gemini Flash...")
 
-        system_prompt, messages = development_prompts.code_generation_prompt(
+        system_prompt, new_messages = development_prompts.code_generation_prompt(
             stories_text, arch_text, api_text, db_text, instructions, workspace_context=workspace_summary
         )
+
+        # Inject chat history
+        messages = (chat_history or []) + new_messages
 
         result = await orchestrator.generate(
             task_type="development",
@@ -100,9 +104,17 @@ class DevelopmentAgent:
             project_id=project_id,
             task_id=task_id,
             system_prompt=system_prompt,
+            json_mode=True,
         )
 
-        items = self._parse_json_array(result)
+        parsed_data = self._parse_json_object(result)
+        logger.info(f"Raw Gemini Result: {result}")
+        logger.info(f"Parsed Data: {parsed_data}")
+        chat_message = parsed_data.get("chat_message", "")
+        items = parsed_data.get("files", [])
+        if not isinstance(items, list):
+            items = []
+
         code_files = []
 
         await event_manager.publish_thinking(task_id, f"Saving {len(items)} generated files...")
@@ -137,27 +149,68 @@ class DevelopmentAgent:
         await event_manager.publish_complete(task_id, {
             "type": "code_files",
             "count": len(code_files),
+            "message": chat_message,
         })
         logger.info(f"Generated {len(code_files)} code files for project {project_id}")
         return code_files
 
-    def _parse_json_array(self, content: str) -> list[dict]:
+    def _parse_json_object(self, content: str) -> dict:
         content = content.strip()
         if content.startswith("```"):
-            lines = content.split("\n")
-            content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+            import re
+            content = re.sub(r"^```(?:json)?\n?", "", content)
+            content = re.sub(r"\n?```$", "", content)
+            
         try:
             parsed = json.loads(content)
-            if isinstance(parsed, list):
-                return parsed
             if isinstance(parsed, dict):
-                for v in parsed.values():
-                    if isinstance(v, list):
-                        return v
-            return [parsed] if isinstance(parsed, dict) else []
+                return parsed
+            if isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict):
+                return parsed[0]
+            return {}
         except json.JSONDecodeError:
-            logger.warning(f"Failed to parse AI response as JSON: {content[:300]}")
-            return []
+            logger.warning(f"Failed to parse AI response as JSON. Salvaging fully completed JSON object from truncated response...")
+            
+        # Bracket counting fallback for truncated JSON object
+        depth = 0
+        in_string = False
+        escape = False
+        obj_start = -1
+        
+        for i, char in enumerate(content):
+            if escape:
+                escape = False
+                continue
+            if char == '\\':
+                escape = True
+                continue
+            if char == '"':
+                in_string = not in_string
+                continue
+                
+            if not in_string:
+                if char == '{':
+                    if depth == 0:
+                        obj_start = i
+                    depth += 1
+                elif char == '}':
+                    depth -= 1
+                    if depth == 0 and obj_start != -1:
+                        obj_str = content[obj_start:i+1]
+                        try:
+                            # If we parse the outermost object successfully, return it!
+                            parsed_obj = json.loads(obj_str)
+                            return parsed_obj
+                        except Exception:
+                            pass
+                            
+        # If fallback fails, attempt to manually extract just the message using regex as a last resort
+        import re
+        match = re.search(r'"chat_message"\s*:\s*"([^"]+)"', content)
+        if match:
+            return {"chat_message": match.group(1), "files": []}
+            
+        return {}
 
     async def _execute_terminal_command(self, project_id: str, command: str) -> str:
         workspace_dir = Path("/app/workspace") / project_id

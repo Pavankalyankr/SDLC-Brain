@@ -32,6 +32,7 @@ class GenerateCodeRequest(BaseModel):
     project_id: str
     story_id: str | None = None
     instructions: str | None = None
+    chat_history: list[dict[str, str]] | None = None
 
 
 class CodeFileStatusUpdate(BaseModel):

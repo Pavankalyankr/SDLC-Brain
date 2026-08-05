@@ -89,10 +89,6 @@ class AIOrchestrator:
                 **kwargs,
             )
 
-            # Notify completion
-            if task_id:
-                await event_manager.publish_complete(task_id, {"content": result})
-
             return result
 
         except Exception as e:
@@ -142,9 +138,6 @@ class AIOrchestrator:
                 if task_id:
                     await event_manager.publish_token(task_id, token)
                 yield token
-
-            if task_id:
-                await event_manager.publish_complete(task_id, {"content": full_response})
 
         except Exception as e:
             logger.error(f"AI streaming error ({task_type}): {e}")

@@ -67,14 +67,14 @@ class WorkspaceManager:
         if not target_path.exists() or not target_path.is_file():
             raise HTTPException(status_code=404, detail="File not found")
 
-        async with aiofiles.open(target_path, encoding='utf-8') as f:
+        async with aiofiles.open(target_path, encoding='utf-8', errors='replace') as f:
             return await f.read()
 
     async def write_file(self, project_id: str, file_path: str, content: str):
         target_path = self._safe_path(project_id, file_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
-        async with aiofiles.open(target_path, mode='w', encoding='utf-8') as f:
+        async with aiofiles.open(target_path, mode='w', encoding='utf-8', errors='replace') as f:
             await f.write(content)
 
     async def delete_file(self, project_id: str, file_path: str):

@@ -107,6 +107,8 @@ class GeminiProvider(BaseLLMProvider):
             config_args["system_instruction"] = system_instruction
         if "top_p" in kwargs:
             config_args["top_p"] = kwargs["top_p"]
+        if kwargs.get("json_mode"):
+            config_args["response_mime_type"] = "application/json"
         return types.GenerateContentConfig(**config_args)
 
     async def generate(
