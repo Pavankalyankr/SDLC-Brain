@@ -205,6 +205,69 @@ class CodeReviewAgent:
         logger.error(f"Failed to salvage code review AI response: {content[:300]}")
         return []
 
+    async def auto_fix_file(
+        self,
+        db: AsyncSession,
+        review: "CodeReview",
+    ) -> str:
+        """
+        Auto-fix a file based on its code review findings.
+
+        1. Read the current file content from workspace
+        2. Call the AI with the review findings to produce a corrected version
+        3. Write the fixed content back to workspace
+        4. Mark the review as 'fixed' in the database
+        """
+        import re
+        from app.modules.development.workspace import workspace_manager
+
+        project_id = review.project_id
+        file_path = review.file_path
+
+        # Read the current file content
+        try:
+            current_code = await workspace_manager.read_file(project_id, file_path)
+        except Exception as e:
+            logger.error(f"Auto-fix: Failed to read file {file_path}: {e}")
+            raise ValueError(f"Cannot read file '{file_path}' from workspace: {e}")
+
+        # Build the auto-fix prompt
+        system_prompt, messages = code_review_prompts.auto_fix_prompt(
+            file_path=file_path,
+            original_code=current_code,
+            review_comments=review.review_comments,
+            suggestions=review.suggestions,
+            severity=review.severity,
+        )
+
+        # Call the AI
+        fixed_code = await orchestrator.generate(
+            task_type="code_review",
+            messages=messages,
+            project_id=project_id,
+            system_prompt=system_prompt,
+        )
+
+        # Strip any markdown fences the AI might have added
+        fixed_code = fixed_code.strip()
+        if fixed_code.startswith("```"):
+            fixed_code = re.sub(r"^```(?:\w+)?\n?", "", fixed_code)
+            fixed_code = re.sub(r"\n?```$", "", fixed_code)
+
+        # Store the original code before overwriting (for diff view on frontend)
+        review.original_code = current_code
+
+        # Write back to workspace
+        await workspace_manager.write_file(project_id, file_path, fixed_code)
+
+        # Mark the review as fixed
+        review.status = "fixed"
+        await db.flush()
+        await db.refresh(review)
+
+        logger.info(f"Auto-fixed file {file_path} for project {project_id}")
+        return fixed_code
+
 
 # Singleton
 code_review_agent = CodeReviewAgent()

@@ -24,6 +24,7 @@ export function StatusBadge({ status, locked, className }: StatusBadgeProps) {
         status === "draft" && "status-draft",
         status === "review" && "status-review",
         status === "approved" && "status-approved",
+        status === "fixed" && "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25",
         className
       )}
     >

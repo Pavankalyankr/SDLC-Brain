@@ -1,23 +1,30 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Save, FileText, AlertCircle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Save, FileText, GitCompareArrows, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { DiffViewer } from "@/components/development/diff-viewer";
 
 interface CodeEditorProps {
   projectId: string;
   selectedFile: string | null;
+  /** Optional: pre-loaded original code for diff comparison (e.g. from a code review) */
+  originalCodeOverride?: string;
 }
 
-export function CodeEditor({ projectId, selectedFile }: CodeEditorProps) {
+export function CodeEditor({ projectId, selectedFile, originalCodeOverride }: CodeEditorProps) {
   const [content, setContent] = useState("");
+  const [originalContent, setOriginalContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
 
   useEffect(() => {
     if (!selectedFile) {
       setContent("");
+      setOriginalContent("");
+      setShowDiff(false);
       return;
     }
 
@@ -37,6 +44,17 @@ export function CodeEditor({ projectId, selectedFile }: CodeEditorProps) {
           // Response is already raw plain text
         }
         setContent(text);
+        // If we have an original code override (from a review), use that.
+        // Otherwise, the loaded content IS the original.
+        if (originalCodeOverride) {
+          setOriginalContent(originalCodeOverride);
+          // Auto-show diff when there's original code and it differs
+          if (originalCodeOverride !== text) {
+            setShowDiff(true);
+          }
+        } else {
+          setOriginalContent(text);
+        }
       } catch (err) {
         console.error(err);
         toast.error("Failed to load file content");
@@ -46,7 +64,7 @@ export function CodeEditor({ projectId, selectedFile }: CodeEditorProps) {
     };
 
     loadFile();
-  }, [projectId, selectedFile]);
+  }, [projectId, selectedFile, originalCodeOverride]);
 
   const handleSave = async () => {
     if (!selectedFile) return;
@@ -60,6 +78,9 @@ export function CodeEditor({ projectId, selectedFile }: CodeEditorProps) {
       });
       if (!res.ok) throw new Error("Failed to save file");
       toast.success("File saved successfully");
+      // After saving, the saved content becomes the new "original"
+      setOriginalContent(content);
+      if (showDiff) setShowDiff(false);
     } catch (err) {
       console.error(err);
       toast.error("Failed to save file");
@@ -67,6 +88,13 @@ export function CodeEditor({ projectId, selectedFile }: CodeEditorProps) {
       setSaving(false);
     }
   };
+
+  const handleRevertHunk = useCallback((newContent: string) => {
+    setContent(newContent);
+    toast.success("Change reverted");
+  }, []);
+
+  const hasChanges = content !== originalContent;
 
   if (!selectedFile) {
     return (
@@ -84,23 +112,64 @@ export function CodeEditor({ projectId, selectedFile }: CodeEditorProps) {
         <div className="flex items-center gap-2 text-sm font-mono text-[var(--foreground)]">
           <FileText className="w-4 h-4 text-[var(--foreground-secondary)]" />
           {selectedFile}
+          {hasChanges && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/20">
+              Modified
+            </span>
+          )}
         </div>
-        <Button 
-          size="sm" 
-          className="h-7 text-xs bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white gap-1.5"
-          onClick={handleSave}
-          disabled={loading || saving}
-        >
-          <Save className="w-3 h-3" />
-          {saving ? "Saving..." : "Save"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Diff toggle button */}
+          {hasChanges && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={`h-7 text-xs gap-1.5 transition-colors ${
+                showDiff
+                  ? "bg-[#1f6feb22] text-[#58a6ff] border-[#1f6feb44] hover:bg-[#1f6feb33]"
+                  : "text-[var(--foreground-secondary)] hover:text-[var(--foreground)]"
+              }`}
+              onClick={() => setShowDiff(!showDiff)}
+            >
+              {showDiff ? (
+                <>
+                  <Pencil className="w-3 h-3" />
+                  Edit Mode
+                </>
+              ) : (
+                <>
+                  <GitCompareArrows className="w-3 h-3" />
+                  Show Changes
+                </>
+              )}
+            </Button>
+          )}
+          <Button 
+            size="sm" 
+            className="h-7 text-xs bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white gap-1.5"
+            onClick={handleSave}
+            disabled={loading || saving}
+          >
+            <Save className="w-3 h-3" />
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
       </div>
 
-      {/* Editor Area */}
-      <div className="flex-1 relative bg-[#1e1e1e]">
+      {/* Editor / Diff Area */}
+      <div className="flex-1 relative bg-[#1e1e1e] min-h-0">
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-[var(--foreground-secondary)]">
             Loading...
+          </div>
+        ) : showDiff && hasChanges ? (
+          <div className="absolute inset-0 overflow-auto">
+            <DiffViewer
+              originalCode={originalContent}
+              modifiedCode={content}
+              onRevertHunk={handleRevertHunk}
+              fileName={selectedFile}
+            />
           </div>
         ) : (
           <textarea

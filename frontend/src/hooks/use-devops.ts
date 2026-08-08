@@ -1,5 +1,10 @@
 /**
  * SDLC Brain — DevOps API Hooks
+ *
+ * Hooks for the 3-step DevOps pipeline:
+ *   1. Pipelines + Infra (Analyze & Generate)
+ *   2. Image Versions (Container Registry)
+ *   3. Release Notes (Release Assist)
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -34,9 +39,35 @@ export interface InfraConfig {
   created_at: string;
 }
 
+export interface ImageVersion {
+  id: string;
+  project_id: string;
+  service_name: string;
+  image_name: string;
+  current_version: string;
+  previous_version: string;
+  tag_type: string;
+  status: string;
+  base_image: string;
+  change_summary: string;
+  created_at: string;
+}
+
+export interface ReleaseNote {
+  id: string;
+  project_id: string;
+  version: string;
+  release_notes: string;
+  deploy_instructions: string;
+  status: string;
+  created_at: string;
+}
+
 export const devopsKeys = {
   pipelines: (pid: string) => ["devops", "pipelines", pid] as const,
   infra: (pid: string) => ["devops", "infra", pid] as const,
+  images: (pid: string) => ["devops", "images", pid] as const,
+  releases: (pid: string) => ["devops", "releases", pid] as const,
 };
 
 export function usePipelines(projectId: string) {
@@ -55,6 +86,22 @@ export function useInfra(projectId: string) {
   });
 }
 
+export function useImageVersions(projectId: string) {
+  return useQuery({
+    queryKey: devopsKeys.images(projectId),
+    queryFn: () => api.get<ImageVersion[]>(`/devops/images/${projectId}`),
+    enabled: !!projectId,
+  });
+}
+
+export function useReleases(projectId: string) {
+  return useQuery({
+    queryKey: devopsKeys.releases(projectId),
+    queryFn: () => api.get<ReleaseNote[]>(`/devops/releases/${projectId}`),
+    enabled: !!projectId,
+  });
+}
+
 export function useGenerateDevOps(projectId: string) {
   return useMutation({
     mutationFn: (data?: { instructions?: string }) =>
@@ -64,6 +111,19 @@ export function useGenerateDevOps(projectId: string) {
       }),
     onError: (error: any) => {
       toast.error(error.message || "Failed to generate DevOps configs");
+    },
+  });
+}
+
+export function useGenerateRelease(projectId: string) {
+  return useMutation({
+    mutationFn: (data?: { version?: string; changes?: string }) =>
+      api.post<{ task_id: string; status: string }>("/devops/generate-release", {
+        project_id: projectId,
+        ...data,
+      }),
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to generate release notes");
     },
   });
 }

@@ -1,3 +1,4 @@
+// Force rebuild
 "use client";
 
 import { useState, useEffect, use } from "react";
@@ -7,6 +8,7 @@ import {
   CheckCircle2,
   Loader2,
   Wrench,
+  Undo2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +17,7 @@ import { AIThinking } from "@/components/shared/ai-thinking";
 import { useAIGeneration } from "@/hooks/use-ai-generation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, usePathname } from "next/navigation";
-import { useCodeReviews, useGenerateCodeReview, useUpdateReviewStatus, useAutoFixReview, reviewKeys, type CodeReview } from "@/hooks/use-code-review";
+import { useCodeReviews, useGenerateCodeReview, useUpdateReviewStatus, useAutoFixReview, useRevertReview, reviewKeys, type CodeReview } from "@/hooks/use-code-review";
 import { FileExplorer } from "@/components/development/file-explorer";
 import { useTargetScope, TargetScopeSelector } from "@/components/shared/target-scope-selector";
 import {
@@ -47,6 +49,8 @@ export default function CodeReviewPage({
   const { startStream, isGenerating } = useAIGeneration();
   
   const [selectedFile, setSelectedFileState] = useState<string | null>(null);
+  // Track which review's original code to pass to the editor for diff
+  const [selectedReviewOriginalCode, setSelectedReviewOriginalCode] = useState<string | undefined>(undefined);
   
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -59,9 +63,12 @@ export default function CodeReviewPage({
   }, []);
   // Track which review IDs are currently being auto-fixed
   const [fixingIds, setFixingIds] = useState<Set<string>>(new Set());
+  // Track which review IDs are currently being reverted
+  const [revertingIds, setRevertingIds] = useState<Set<string>>(new Set());
 
-  const setSelectedFile = (path: string | null) => {
+  const setSelectedFile = (path: string | null, originalCode?: string) => {
     setSelectedFileState(path);
+    setSelectedReviewOriginalCode(originalCode);
     if (typeof window !== "undefined") {
       const newParams = new URLSearchParams(window.location.search);
       if (path) {
@@ -77,6 +84,7 @@ export default function CodeReviewPage({
   const genReview = useGenerateCodeReview(projectId);
   const updateStatus = useUpdateReviewStatus(projectId);
   const autoFix = useAutoFixReview(projectId);
+  const revertReview = useRevertReview(projectId);
 
   const {
     selectedStage,
@@ -135,6 +143,19 @@ export default function CodeReviewPage({
     }
   };
 
+  const handleRevert = async (reviewId: string) => {
+    setRevertingIds((prev) => new Set(prev).add(reviewId));
+    try {
+      await revertReview.mutateAsync(reviewId);
+    } finally {
+      setRevertingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(reviewId);
+        return next;
+      });
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col pt-1 pb-4 px-4 overflow-hidden min-h-0 w-full h-full">
       <div className="flex items-center justify-between mb-4 shrink-0">
@@ -174,7 +195,7 @@ export default function CodeReviewPage({
         
         {/* LEFT: File Explorer (Fixed Width) */}
         <div className="w-72 shrink-0 h-full relative overflow-hidden flex flex-col">
-          <FileExplorer projectId={projectId} onFileSelect={setSelectedFile} />
+          <FileExplorer projectId={projectId} onFileSelect={(path) => setSelectedFile(path)} />
         </div>
 
         {/* CENTER: Review Dashboard (Now full remaining width) */}
@@ -212,12 +233,16 @@ export default function CodeReviewPage({
               reviews.map((review: CodeReview) => {
                 const isFixed = review.status === "fixed";
                 const isFixing = fixingIds.has(review.id);
+                const isReverting = revertingIds.has(review.id);
 
                 return (
                   <Card 
                     key={review.id} 
                     className={`border-[var(--border)] bg-[var(--background-elevated)] transition-all hover:border-[var(--primary)] hover:shadow-md cursor-pointer ${isFixed ? "opacity-80 border-emerald-500/30" : ""}`}
-                    onClick={() => setSelectedFile(review.file_path)}
+                    onClick={() => setSelectedFile(
+                      review.file_path,
+                      isFixed && review.original_code ? review.original_code : undefined
+                    )}
                   >
                     <CardContent className="p-4 flex flex-col gap-3">
                       <div className="flex items-start justify-between">
@@ -276,13 +301,37 @@ export default function CodeReviewPage({
                         </div>
                       </div>
 
-                      {/* Auto-Fix / Fixed button — always at the bottom */}
-                      <div className="flex justify-end pt-1">
+                      {/* Auto-Fix / Fixed / Revert buttons — always at the bottom */}
+                      <div className="flex justify-end gap-2 pt-1">
                         {isFixed ? (
-                          <span className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-semibold rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Fixed
-                          </span>
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isReverting}
+                              className="h-7 text-xs text-[#d29922] border-[#d2992230] bg-[#d2992210] hover:bg-[#d2992220] disabled:opacity-60"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRevert(review.id);
+                              }}
+                            >
+                              {isReverting ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Reverting…
+                                </>
+                              ) : (
+                                <>
+                                  <Undo2 className="h-3 w-3 mr-1" />
+                                  Revert Fix
+                                </>
+                              )}
+                            </Button>
+                            <span className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-semibold rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Fixed
+                            </span>
+                          </>
                         ) : (
                           <Button
                             size="sm"
@@ -318,26 +367,26 @@ export default function CodeReviewPage({
 
       </div>
 
-      {/* File Preview Modal */}
+      {/* File Preview Modal with Diff Support */}
       <Dialog open={!!selectedFile} onOpenChange={(open) => !open && setSelectedFile(null)}>
         <DialogContent showCloseButton={true} className="sm:max-w-5xl w-full h-[85vh] p-4 flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>File Preview & Auto-Fix</DialogTitle>
             <DialogDescription>
               Viewing and editing <code className="text-xs bg-muted px-1 py-0.5 rounded">{selectedFile}</code>
+              {selectedReviewOriginalCode && (
+                <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#1f6feb22] text-[#58a6ff] border border-[#1f6feb44]">
+                  Diff view available
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 min-h-0 rounded-xl overflow-hidden border border-[var(--border)] shadow-sm">
-            {(() => {
-              const selectedReview = reviews.find((r: CodeReview) => r.file_path === selectedFile);
-              return (
-                <CodeEditor 
-                  projectId={projectId} 
-                  selectedFile={selectedFile} 
-                  originalCodeOverride={selectedReview?.original_code}
-                />
-              );
-            })()}
+            <CodeEditor
+              projectId={projectId}
+              selectedFile={selectedFile}
+              originalCodeOverride={selectedReviewOriginalCode}
+            />
           </div>
         </DialogContent>
       </Dialog>

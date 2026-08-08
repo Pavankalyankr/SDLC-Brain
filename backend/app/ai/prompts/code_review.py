@@ -51,6 +51,37 @@ Respond in valid JSON as an array of review objects (one per file)."""
 
         return system, [{"role": "user", "content": user_content}]
 
+    def auto_fix_prompt(
+        self, file_path: str, original_code: str, review_comments: str, suggestions: str, severity: str
+    ) -> tuple[str, list[dict]]:
+        """Build prompt for auto-fixing a file based on review findings."""
+        system = self.build_system_prompt(
+            role="an expert Senior Software Engineer specialized in automated code repair",
+            instructions="""You are given a source file along with code review findings (bugs, style issues,
+security vulnerabilities, performance problems, etc.) and improvement suggestions.
+
+Your task is to APPLY ALL the suggested fixes directly to the code and return the
+complete, corrected file content.
+
+Rules:
+1. Output ONLY the fixed source code — no markdown fences, no explanations, no commentary.
+2. Preserve the original file structure, imports, and formatting conventions.
+3. Fix every issue mentioned in the review comments and suggestions.
+4. Do NOT remove existing comments or docstrings unrelated to the fixes.
+5. Do NOT add placeholder comments like "// Fixed" — just fix the code silently.
+6. If a suggestion is ambiguous or risky, apply the safest interpretation."""
+        )
+
+        user_content = (
+            f"## File: {file_path}\n"
+            f"**Review Severity**: {severity.upper()}\n\n"
+            f"```\n{original_code}\n```\n\n"
+            f"## Review Findings\n{review_comments}\n\n"
+            f"## Improvement Suggestions\n{suggestions}"
+        )
+
+        return system, [{"role": "user", "content": user_content}]
+
 
 # Singleton
 code_review_prompts = CodeReviewPromptBuilder()

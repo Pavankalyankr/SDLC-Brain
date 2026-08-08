@@ -1,50 +1,76 @@
 """
-SDLC Brain — Production Support Prompt Templates
+SDLC Brain — Production Prompt Templates
 
-Structured prompts for incident analysis and Root Cause Analysis.
+Full RCA pipeline:
+  1. Classify incident
+  2. Investigate (logs + codebase + architecture)
+  3. Root Cause Analysis
+  4. Impact Analysis
+  5. Mitigation Runbook
+  6. Proposed Code Fix + Patch
 """
 
 from app.ai.prompts.base import BasePromptBuilder
 
 
 class ProductionPromptBuilder(BasePromptBuilder):
-    """Builds prompts for production support generation."""
 
     def rca_prompt(
-        self, incident_description: str, system_architecture: str, instructions: str = ""
+        self,
+        incident_title: str,
+        raw_logs: str,
+        architecture_text: str,
+        codebase_text: str,
+        severity: str = "",
+        service: str = "",
     ) -> tuple[str, list[dict]]:
-        """Build prompt for incident description → Root Cause Analysis."""
+        """Build prompt for full incident RCA pipeline."""
         system = self.build_system_prompt(
-            role="an expert Site Reliability Engineer (SRE) and Production Support specialist with deep systems knowledge",
-            instructions="""Perform a thorough Root Cause Analysis (RCA) for the described production incident.
+            role="a Senior Site Reliability Engineer (SRE) performing Root Cause Analysis on a production incident",
+            instructions="""You are given:
+1. An incident report with logs/stack traces
+2. The system architecture
+3. The actual source code from the project workspace
 
-Respond with a single JSON object containing:
-- **title**: Concise incident title
-- **severity**: "critical", "high", "medium", or "low"
-- **executive_summary**: 2-3 sentence non-technical summary of what happened and impact
-- **root_cause**: The primary technical root cause (be specific — not "server overload" but WHY the server overloaded)
-- **contributing_factors**: Array of secondary factors that enabled or worsened the incident
-- **timeline**: Array of timeline events, each with {"time": "HH:MM", "event": "description"}
-- **impact_assessment**: What was affected (users, data, services, revenue)
-- **immediate_remediation**: Steps taken (or to take) to stop the bleeding RIGHT NOW
-- **resolution**: Complete fix to fully resolve the issue
-- **prevention**: Array of specific action items to prevent recurrence, each with:
-  - action: What to do
-  - owner: Which team (e.g., "Backend", "DevOps", "Database")
-  - priority: "P0", "P1", "P2"
-  - timeline: e.g., "48 hours", "1 week"
-- **ai_analysis**: Technical deep-dive analysis of the failure mode
-- **lessons_learned**: Key learnings for the post-mortem
+Perform a thorough investigation and respond with a JSON object containing ALL of the following fields:
 
-Use the 5 Whys methodology. Be technically precise and actionable.
-Respond in valid JSON as a single object."""
+{
+  "classification": "Short category like 'cache_timeout', 'db_connection_pool', 'memory_leak', 'null_pointer', 'api_rate_limit', 'auth_failure'",
+  "root_cause": "Detailed root cause analysis. Trace through the architecture and code to explain exactly what happened and why. Reference specific files and line patterns when possible.",
+  "impact": "Impact analysis: what services are affected, what users experience, data integrity concerns, SLA impact.",
+  "affected_files": ["list", "of", "file/paths", "that", "are", "involved"],
+  "mitigation_runbook": "Step-by-step mitigation runbook for a DevOps engineer to stop the bleeding RIGHT NOW. Include specific commands, config changes, and rollback steps. Use numbered steps.",
+  "proposed_fix": "Explanation of the permanent code fix needed. Describe what needs to change and why.",
+  "code_patch": "The actual code changes as a unified diff. Show the file path, the old code, and the new code. Format as:\\n--- a/path/to/file\\n+++ b/path/to/file\\n@@ ... @@\\n-old line\\n+new line",
+  "confidence": 0.85,
+  "severity_assessment": "Your assessment: low, medium, high, or critical",
+  "title": "A concise incident title"
+}
+
+IMPORTANT RULES:
+- Trace the incident through Architecture → Service → Code to find the root cause
+- Reference specific files from the codebase when explaining the root cause
+- The mitigation_runbook should be actionable RIGHT NOW (restart service, scale up, rollback, etc.)
+- The code_patch should be a real, applicable diff
+- Properly escape all newlines as \\n in JSON string values
+- Respond ONLY with valid JSON. No markdown wrapping."""
         )
 
-        user_content = f"## Incident Description\n\n{incident_description}"
-        if system_architecture:
-            user_content += f"\n\n## System Architecture Context\n\n{system_architecture}"
-        if instructions:
-            user_content += f"\n\n## Additional Context\n{instructions}"
+        user_content = f"## Incident Report\n"
+        if incident_title:
+            user_content += f"**Title:** {incident_title}\n"
+        if severity:
+            user_content += f"**Severity:** {severity}\n"
+        if service:
+            user_content += f"**Affected Service:** {service}\n"
+
+        user_content += f"\n### Raw Logs / Stack Trace\n```\n{raw_logs}\n```"
+
+        if architecture_text:
+            user_content += f"\n\n## System Architecture\n{architecture_text}"
+
+        if codebase_text:
+            user_content += f"\n\n## Source Code\n{codebase_text}"
 
         return system, [{"role": "user", "content": user_content}]
 

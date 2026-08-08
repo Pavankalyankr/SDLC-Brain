@@ -68,3 +68,36 @@ export function useUpdateReviewStatus(projectId: string) {
     },
   });
 }
+
+export function useAutoFixReview(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Backend route: POST /code-review/auto-fix/{review_id}
+    mutationFn: (reviewId: string) =>
+      api.post<CodeReview>(`/code-review/auto-fix/${reviewId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reviewKeys.reviews(projectId) });
+      toast.success("File auto-fixed successfully!");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Auto-fix failed. Please try again.");
+    },
+  });
+}
+
+export function useRevertReview(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Backend route: POST /code-review/revert/{review_id}
+    mutationFn: (reviewId: string) =>
+      api.post<CodeReview>(`/code-review/revert/${reviewId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reviewKeys.reviews(projectId) });
+      toast.success("Fix reverted successfully!");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Revert failed. Please try again.");
+    },
+  });
+}
+

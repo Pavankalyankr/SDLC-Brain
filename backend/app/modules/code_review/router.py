@@ -80,6 +80,85 @@ async def update_review_status(
     return review
 
 
+# ─── Auto-Fix ──────────────────────────────────────────────
+@router.post("/auto-fix/{review_id}", response_model=CodeReviewResponse)
+async def auto_fix_review(
+    review_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """Auto-fix the file referenced by a code review using AI."""
+    from app.ai.agents.code_review_agent import code_review_agent
+
+    result = await db.execute(select(CodeReview).where(CodeReview.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise NotFoundException("CodeReview", review_id)
+    if review.status == "fixed":
+        raise HTTPException(status_code=400, detail="This review has already been fixed.")
+
+    try:
+        await code_review_agent.auto_fix_file(db, review)
+        await db.commit()
+        await db.refresh(review)
+        return review
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        await db.rollback()
+        
+        error_msg = str(e)
+        try:
+            start = error_msg.find("{")
+            if start != -1:
+                dict_str = error_msg[start:]
+                parsed = None
+                try:
+                    import ast
+                    parsed = ast.literal_eval(dict_str)
+                except Exception:
+                    import json
+                    parsed = json.loads(dict_str)
+                
+                if isinstance(parsed, dict) and "error" in parsed:
+                    err = parsed["error"]
+                    if isinstance(err, dict) and "message" in err:
+                        error_msg = err["message"]
+        except Exception:
+            pass
+            
+        raise HTTPException(status_code=500, detail=f"Auto-fix failed: {error_msg}")
+
+
+# ─── Revert Fix ─────────────────────────────────────────────
+@router.post("/revert/{review_id}", response_model=CodeReviewResponse)
+async def revert_review_fix(
+    review_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """Revert a previously auto-fixed file back to its original code."""
+    from app.modules.development.workspace import workspace_manager
+
+    result = await db.execute(select(CodeReview).where(CodeReview.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise NotFoundException("CodeReview", review_id)
+    if review.status != "fixed":
+        raise HTTPException(status_code=400, detail="This review has not been fixed yet.")
+    if not review.original_code:
+        raise HTTPException(status_code=400, detail="No original code stored for this review.")
+
+    try:
+        await workspace_manager.write_file(review.project_id, review.file_path, review.original_code)
+        review.status = "draft"
+        review.locked = False
+        await db.commit()
+        await db.refresh(review)
+        return review
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Revert failed: {str(e)}")
+
+
 # ─── SSE stream ─────────────────────────────────────────────
 @router.get("/stream/{task_id}")
 async def stream_review_events(task_id: str):
@@ -89,3 +168,4 @@ async def stream_review_events(task_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+

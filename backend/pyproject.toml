@@ -23,6 +23,7 @@ dependencies = [
 
     # AI — LLM Abstraction
     "google-genai>=1.2.0",
+    "openai>=1.40.0",
 
     # AI — Orchestration
     "langgraph>=0.2.0",
